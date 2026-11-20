@@ -270,6 +270,9 @@
   .br-row .br-n{flex:none; font-size:12px; font-weight:700; width:46px;}
   .br-row input{padding:6px 8px; border:1.5px solid var(--ink); border-radius:10px; font-size:13px; background:#fff; font-family:inherit;}
   .br-row .br-addr{flex:1 1 170px; min-width:140px;} .br-row .br-url{flex:1 1 150px; min-width:120px;}
+  .note-a{color:#2a6fb0; text-decoration:underline; word-break:break-all;}
+  .note-links{display:flex; flex-direction:column; gap:3px; margin-top:5px; font-size:12.5px;}
+  .note-links a{color:#2a6fb0; word-break:break-all;}
   .lab-chips{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;}
   .lab-chip{border:1.5px solid var(--ink); border-radius:999px; padding:3px 11px; font-size:12px; font-weight:700; cursor:pointer;}
   .lab-note{font-size:12px; color:var(--ink-soft);}
@@ -468,7 +471,7 @@
   .candidate-top{display:flex; justify-content:space-between; align-items:flex-start; gap:8px;}
   .candidate-name{font-family:var(--font-display); font-weight:700; font-size:15px;}
   .candidate-loc{font-size:12px; color:var(--ink-soft); margin-top:2px;}
-  .candidate-notes{font-size:12.5px; color:var(--ink); margin-top:8px; line-height:1.5;}
+  .candidate-notes{font-size:12.5px; color:var(--ink); margin-top:8px; line-height:1.5; white-space:pre-wrap; word-break:break-word;}
   .candidate-meta{font-size:11px; color:var(--ink-soft); margin-top:6px;}
   .vote-chips{display:flex; gap:6px; flex-wrap:wrap; margin-top:10px;}
   .priority-chip{font-size:10.5px; font-weight:700; font-family:var(--font-display); padding:3px 9px; border-radius:999px;
@@ -3636,6 +3639,42 @@ function transitViewHtml(o){
   }).join('')}</div>`;
 }
 
+
+/* ---------------- 備註入面嘅網址 → 可撳連結 ---------------- */
+function linkify(text){
+  const esc = escapeHtml(text || '');
+  return esc.replace(/((?:https?:\/\/|www\.)[A-Za-z0-9\-._~:\/?#\[\]@!$&'()*+,;=%]+)/gi, (m)=>{
+    let url = m, tail = '';
+    const t = /(?:[.,;:!?)\]）」』。，、！？]|&quot;|&#39;|&gt;|&lt;)+$/.exec(url);
+    if(t){ tail = t[0]; url = url.slice(0, url.length - tail.length); }
+    if(!url) return m;
+    const href = /^www\./i.test(url) ? 'https://' + url : url;
+    return '<a href="' + href + '" target="_blank" rel="noopener noreferrer" class="note-a">' + url + '</a>' + tail;
+  });
+}
+function extractUrls(t){
+  const out = [];
+  String(t || '').replace(/((?:https?:\/\/|www\.)[A-Za-z0-9\-._~:\/?#\[\]@!$&'()*+,;=%]+)/gi, (m)=>{ out.push(m.replace(/[.,;:!?]+$/, '')); return m; });
+  return out;
+}
+function wireNoteLinks(overlay, sel){
+  const ta = overlay.querySelector(sel);
+  if(!ta) return;
+  const box = document.createElement('div');
+  box.className = 'note-links';
+  ta.insertAdjacentElement('afterend', box);
+  const upd = ()=>{
+    const us = extractUrls(ta.value);
+    box.innerHTML = us.map(u=>{
+      const href = /^www\./i.test(u) ? 'https://' + u : u;
+      const label = u.replace(/^https?:\/\/(www\.)?/i, '').slice(0, 42);
+      return '<a href="' + escapeHtml(href) + '" target="_blank" rel="noopener noreferrer">🔗 ' + escapeHtml(label) + '</a>';
+    }).join('');
+  };
+  ta.addEventListener('input', upd);
+  upd();
+}
+
 function candPri(c){ return c.pri || (c.votes && c.votes[c.proposedBy]) || 'nice'; }
 function candJoiners(c){
   const out = [];
@@ -3681,7 +3720,7 @@ function openViewModal(cfg){
         ${cfg.type==='transit' ? transitViewHtml(cfg) : ''}
         ${igBtnHtml(cfg.igUrl)}
         ${cfg.tag ? `<div class="item-tag" style="position:static;display:inline-block;${cfg.color?('background:'+cfg.color+';color:#fff;'):''}">${escapeHtml(cfg.tag)}</div>` : ''}
-        ${cfg.notes ? `<div style="font-size:13px;line-height:1.5;">${escapeHtml(cfg.notes)}</div>` : ''}
+        ${cfg.notes ? `<div style="font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word;">${linkify(cfg.notes)}</div>` : ''}
         ${photos ? `<div class="photo-row">${photos}</div>` : ''}
         <div class="modal-actions"><button class="ghost-btn" id="view-close" style="flex:1;">關閉</button></div>
       </div>
@@ -3843,6 +3882,7 @@ function openItemModal(existing, opts){
   });
 
   const lab = wireLabelFields(overlay, it.tag||'', it.color||'');
+  wireNoteLinks(overlay, '#f-notes');
   const brSel = overlay.querySelector('#f-branch');
   if(brSel) brSel.onchange = ()=>{ const b = brBranches[+brSel.value]; if(!b) return; overlay.querySelector('#f-address').value = b.address || ''; overlay.querySelector('#f-mapurl').value = b.mapUrl || ''; };
 
@@ -4094,7 +4134,7 @@ function renderCandidatesPanel(){
             ${(c.more||[]).length ? `<div class="candidate-loc">🏬 共 ${1+c.more.length} 間分店：${mlink ? `<a href="${escapeHtml(mlink)}" target="_blank" rel="noopener">1</a>` : '1'}${c.more.map((m,i)=>{ const ml = mapLink(m); return ' · ' + (ml ? `<a href="${escapeHtml(ml)}" target="_blank" rel="noopener">${i+2}</a>` : (i+2)); }).join('')}</div>` : ''}
           </div>
         </div>
-        ${c.notes ? `<div class="candidate-notes">${escapeHtml(c.notes)}</div>` : ''}
+        ${c.notes ? `<div class="candidate-notes">${linkify(c.notes)}</div>` : ''}
         <div class="candidate-meta">由 ${escapeHtml(c.proposedBy)} 提出${c.tag ? ` · <span class="lab-dot" style="background:${c.color||'#fff'}"></span>${escapeHtml(c.tag)}` : ''}${normIg(c.igUrl) ? ` · <a href="${escapeHtml(normIg(c.igUrl))}" target="_blank" rel="noopener">📷 IG</a>` : ''}</div>
         <div class="vote-chips"><span class="priority-chip ${pri==='must'?'must':'nice'}">${pri==='must'?'必去':'想去'}</span></div>
         <div class="cand-who">👥 ${joiners.length} 人加入：${joiners.map(escapeHtml).join('、')}</div>
@@ -4199,6 +4239,7 @@ function openCandidateModal(existing){
   overlay.querySelector('#c-cancel').onclick = close;
   overlay.addEventListener('mousedown', (e)=>{ if(e.target===overlay) close(); });
   const lab = wireLabelFields(overlay, ex ? (ex.tag||'') : '', ex ? (ex.color||'') : '');
+  wireNoteLinks(overlay, '#c-notes');
   let more = ((ex && ex.more) || []).map(m=> Object.assign({}, m));
   const moreRows = overlay.querySelector('#c-more-rows');
   function renderMore(){
@@ -4506,7 +4547,7 @@ function openBookingSheet(bid){
       <div class="modal-body">
         <div class="bk-line">${bkWhen(b)}</div>
         ${b.ref ? `<div class="bk-line">🔖 訂單：${escapeHtml(b.ref)}</div>` : ''}
-        ${b.notes ? `<div class="candidate-notes">${escapeHtml(b.notes)}</div>` : ''}
+        ${b.notes ? `<div class="candidate-notes">${linkify(b.notes)}</div>` : ''}
         <div class="vote-chips"><span class="priority-chip ${b.booked?'must':'nice'}">${b.booked?'✅ 已訂好':'⏳ 未訂'}</span>${bkInItinerary(b)?'<span class="priority-chip nice">✓ 已喺行程</span>':''}</div>
         ${bkPlacesViewHtml(b)}
         ${bkHasPlaces(b) ? '<button type="button" class="ghost-btn" id="bs-map">🗺 喺地圖頁睇預訂地點</button>' : ''}
@@ -4592,7 +4633,7 @@ function renderBookingsPanel(){
           <div class="bk-line">${b.date ? when : '未填日期'}</div>
           ${b.ref ? `<div class="bk-line">🔖 訂單：${escapeHtml(b.ref)}</div>` : ''}
         </div></div>
-        ${b.notes ? `<div class="candidate-notes">${escapeHtml(b.notes)}</div>` : ''}
+        ${b.notes ? `<div class="candidate-notes">${linkify(b.notes)}</div>` : ''}
         <div class="candidate-meta">${b.by ? '由 '+escapeHtml(b.by)+' 記錄' : ''}</div>
         <div class="vote-chips"><span class="priority-chip ${b.booked?'must':'nice'}">${b.booked?'✅ 已訂好':'⏳ 未訂'}</span></div>
         <div class="candidate-actions">
@@ -4670,6 +4711,7 @@ function openBookingModal(existing){
       </div>
     </div>`;
   document.body.appendChild(overlay);
+  wireNoteLinks(overlay, '#b-notes');
   const close = ()=> overlay.remove();
   overlay.querySelector('.modal-close').onclick = close;
   overlay.querySelector('#b-cancel').onclick = close;
