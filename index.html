@@ -259,6 +259,13 @@
   .join-block{background:var(--paper-2,#f5efe3); border:1.5px dashed var(--ink); border-radius:12px; padding:8px 10px; font-size:13px;}
   .join-block .ghost-btn{margin-top:6px;}
   .map-block{margin-top:6px;}
+  .cand-nav{position:sticky; top:0; z-index:30; display:flex; align-items:center; gap:6px; overflow-x:auto; padding:8px 4px; margin-bottom:6px; background:var(--paper,#fdfcf8); border-bottom:1.5px dashed var(--line-strong); scrollbar-width:thin;}
+  .cand-nav-all{flex:none; font-size:12.5px; margin-right:2px; white-space:nowrap;}
+  .cand-nav-chip{flex:none; display:inline-flex; align-items:center; gap:5px; border:1.5px solid var(--ink); border-radius:999px; padding:4px 11px; font-size:12.5px; font-weight:700; background:#fff; cursor:pointer; white-space:nowrap; font-family:inherit; color:inherit;}
+  .cand-nav-chip b{background:var(--ink); color:#fff; border-radius:999px; min-width:18px; padding:0 5px; text-align:center; font-size:11px;}
+  .cand-sec{scroll-margin-top:64px;}
+  .cand-sec.flash{animation:candflash 1.2s ease;}
+  @keyframes candflash{0%{background:rgba(224,175,46,.55);}100%{background:transparent;}}
   .lab-chips{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;}
   .lab-chip{border:1.5px solid var(--ink); border-radius:999px; padding:3px 11px; font-size:12px; font-weight:700; cursor:pointer;}
   .lab-note{font-size:12px; color:var(--ink-soft);}
@@ -2289,7 +2296,7 @@ function candidatesDrawerHtml(mode){
     const chipsVote = `<span class="priority-chip ${pri0==='must'?'must':'nice'}">${pri0==='must'?'必去':'想去'}</span> <span class="priority-chip nice">👥 ${candJoiners(c).length}</span>`;
     const k0 = labelKey(c);
     let head = '';
-    if(k0 !== _lk){ _lk = k0; head = `<div class="cc-grouphead" style="${c.color ? 'background:'+c.color+';color:'+readableOn(c.color)+';' : ''}">${k0 ? escapeHtml(k0) : '未分類'}</div>`; }
+    if(k0 !== _lk){ _lk = k0; head = `<div class="cc-grouphead" style="${c.color ? 'background:'+c.color+';color:'+readableOn(c.color)+';' : ''}">${k0 ? escapeHtml(k0) : '未分類'} · ${candidates.filter(x=> labelKey(x)===k0).length}</div>`; }
     return head + `
       <div class="candidate-chip" draggable="${mode==='compare'?'false':'true'}" data-cid="${c.id}">
         <div class="cc-name">${escapeHtml(c.name)}</div>
@@ -3557,15 +3564,26 @@ function candidatesByLabel(){
     return ((candPri(a)==='must')?0:1) - ((candPri(b)==='must')?0:1) || (a.name||'').localeCompare(b.name||'', 'zh');
   });
 }
+function candNavHtml(list){
+  const groups = [];
+  list.forEach(c=>{
+    const k = labelKey(c);
+    let g = groups.find(x=> x.key===k);
+    if(!g){ g = { key:k, color:c.color||'', n:0 }; groups.push(g); }
+    g.n++;
+  });
+  const chips = groups.map((g,i)=>`<button type="button" class="cand-nav-chip" data-sec="${i}">${g.color ? `<span class="lab-dot" style="background:${g.color}"></span>` : ''}${g.key ? escapeHtml(g.key) : '未分類'}<b>${g.n}</b></button>`).join('');
+  return `<div class="cand-nav"><span class="cand-nav-all">全部 <b>${list.length}</b></span>${chips}</div>`;
+}
 function groupedCardsHtml(list, htmls){
-  let out = '', cur = null, open = false;
+  let out = '', cur = null, open = false, gi = 0;
   list.forEach((c,i)=>{
     const k = labelKey(c);
     if(cur===null || k!==cur){
       if(open) out += '</div>';
       const n = list.filter(x=> labelKey(x)===k).length;
       const dot = c.color ? `<span class="lab-dot" style="background:${c.color}"></span>` : '';
-      out += `<div class="bk-h">${dot}${k ? escapeHtml(k) : '未分類'} · ${n}</div><div class="candidate-list">`;
+      out += `<div class="bk-h cand-sec" id="cand-sec-${gi++}">${dot}${k ? escapeHtml(k) : '未分類'} · ${n}</div><div class="candidate-list">`;
       cur = k; open = true;
     }
     out += htmls[i];
@@ -4073,7 +4091,16 @@ function renderCandidatesPanel(){
       </div>`;
   });
   const cardsHtml = groupedCardsHtml(sortedC, cardsArr);
-  mount.innerHTML = cardsHtml;
+  mount.innerHTML = candNavHtml(sortedC) + cardsHtml;
+  enableHScroll(mount.querySelector('.cand-nav'));
+  mount.querySelectorAll('.cand-nav-chip').forEach(b=>{
+    b.onclick = ()=>{
+      const el = document.getElementById('cand-sec-' + b.dataset.sec);
+      if(!el) return;
+      el.scrollIntoView({ behavior:'smooth', block:'start' });
+      el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+    };
+  });
 
   mount.querySelectorAll('.cand-join').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
