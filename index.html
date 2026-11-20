@@ -266,6 +266,10 @@
   .cand-sec{scroll-margin-top:64px;}
   .cand-sec.flash{animation:candflash 1.2s ease;}
   @keyframes candflash{0%{background:rgba(224,175,46,.55);}100%{background:transparent;}}
+  .br-row{display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:6px 0; border-bottom:1px dashed rgba(64,49,31,.25);}
+  .br-row .br-n{flex:none; font-size:12px; font-weight:700; width:46px;}
+  .br-row input{padding:6px 8px; border:1.5px solid var(--ink); border-radius:10px; font-size:13px; background:#fff; font-family:inherit;}
+  .br-row .br-addr{flex:1 1 170px; min-width:140px;} .br-row .br-url{flex:1 1 150px; min-width:120px;}
   .lab-chips{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;}
   .lab-chip{border:1.5px solid var(--ink); border-radius:999px; padding:3px 11px; font-size:12px; font-weight:700; cursor:pointer;}
   .lab-note{font-size:12px; color:var(--ink-soft);}
@@ -1660,7 +1664,7 @@ function seedDemo0(){
   lsSet('s:candidates', [
     { id:'c1', name:'築地場外市場', location:'築地', address:'東京都中央區築地 4 丁目', notes:'食海鮮早餐', proposedBy:'小美', pri:'must', joined:['阿明','阿傑'], tag:'必食', color:'#E0AF2E', igUrl:'https://www.instagram.com/tsukiji_market/', addedAt:1 },
     { id:'c2', name:'東京鐵塔', location:'港區', notes:'', proposedBy:'阿傑', pri:'nice', joined:[], tag:'影相位', color:'#7484BF', addedAt:2 },
-    { id:'c3', name:'蟹道樂 本店', location:'道頓堀', notes:'', proposedBy:'阿明', pri:'must', joined:['小美'], tag:'必食', color:'#E0AF2E', addedAt:3 }
+    { id:'c3', name:'蟹道樂 本店', location:'道頓堀', notes:'', proposedBy:'阿明', pri:'must', joined:['小美'], tag:'必食', color:'#E0AF2E', address:'大阪市中央區道頓堀 1-6-18', more:[ { id:'m1', address:'大阪市北區梅田 1-1' }, { id:'m2', address:'東京都新宿區歌舞伎町 1-2' } ], addedAt:3 }
   ]);
   lsSet('s:bookings', [
     { id:'b1', type:'hotel', name:'新宿 Granbell 酒店', date:d1, time:'15:00', nights:2, ref:'AB123456', notes:'免費取消到出發前 3 日', booked:true, by:'阿明', members:['阿明','小美','阿傑','Ken'],
@@ -2301,6 +2305,7 @@ function candidatesDrawerHtml(mode){
       <div class="candidate-chip" draggable="${mode==='compare'?'false':'true'}" data-cid="${c.id}">
         <div class="cc-name">${escapeHtml(c.name)}</div>
         ${c.location ? `<div class="cc-loc">📍 ${escapeHtml(c.location)}</div>` : ''}
+        ${(c.more||[]).length ? `<div class="cc-loc">🏬 ${1+c.more.length} 間分店</div>` : ''}
         ${chipsVote ? `<div class="cc-votes">${chipsVote}</div>` : ''}
         ${c.proposedBy===myName
           ? `<div class="cc-owner">✓ 你係發起人（自動加入）</div>`
@@ -3208,9 +3213,9 @@ function dayIndexOf(d){ const ds = tripDates(); const i = ds.indexOf(d); return 
 function dayColorOf(d){ const i = dayIndexOf(d); return i<0 ? '#888' : DAY_COLORS[i % DAY_COLORS.length]; }
 function mapPoints(){
   const pts = [];
-  const mk = (kind, it, title)=>{
+  const mk = (kind, it, title, pid)=>{
     const hasPlace = (it.address||'').trim() || (it.mapUrl||'').trim();
-    pts.push({ kind, id:it.id, title, date:it.date, time:it.time, location:it.location, address:it.address, mapUrl:it.mapUrl,
+    pts.push({ kind, id: pid || it.id, title, date:it.date, time:it.time, location:it.location, address:it.address, mapUrl:it.mapUrl,
                people: kind==='group' ? (it.participants||[]).length : 0, hasPlace: !!hasPlace,
                lat: (it.geoKey===geoKeyOf(it) && typeof it.lat==='number') ? it.lat : null,
                lng: (it.geoKey===geoKeyOf(it) && typeof it.lng==='number') ? it.lng : null,
@@ -3219,7 +3224,11 @@ function mapPoints(){
                tried: false });
   };
   if(mapFilter.group) groupItems.filter(it=> it.type!=='transit' && !mapDaysOff.has(dayIndexOf(it.date))).forEach(it=> mk('group', it, it.title));
-  if(mapFilter.cand) candidates.forEach(c=> mk('cand', c, c.name));
+  if(mapFilter.cand) candidates.forEach(c=>{
+    const nb = (c.more||[]).length;
+    mk('cand', c, nb ? c.name + '（分店 1）' : c.name);
+    (c.more||[]).forEach((m,i)=> mk('cand', m, c.name + '（分店 ' + (i+2) + '）', c.id + '#b' + m.id));
+  });
   if(mapFilter.personal) personalItems.filter(it=> it.type!=='transit').forEach(it=> mk('personal', it, it.title));
   if(mapFilter.book) bookings.forEach(b=>{
     bkPlaceDefs(b.type).forEach(d=>{
@@ -3442,7 +3451,9 @@ async function renderMapPanel(){
   const apply = (arr, kind)=>{
     let changed = false;
     pts.filter(p=> p.kind===kind && p.fresh).forEach(p=>{
-      const it = arr.find(x=>x.id===p.id); if(!it) return;
+      let it = arr.find(x=>x.id===p.id);
+      if(!it && String(p.id).includes('#b')){ const sp = String(p.id).split('#b'); const c0 = arr.find(x=>x.id===sp[0]); it = c0 && (c0.more||[]).find(m=>m.id===sp[1]); }
+      if(!it) return;
       const key = geoKeyOf(it);
       if(p.lat!=null){ if(it.lat!==p.lat || it.lng!==p.lng || it.geoKey!==key || it.geoSrc!==p.geoSrc || !!it.geoApprox!==!!p.geoApprox){ it.lat = p.lat; it.lng = p.lng; it.geoKey = key; it.geoSrc = p.geoSrc; it.geoApprox = !!p.geoApprox; delete it.geoFail; changed = true; } }
       else if(p.geoFail){ it.lat = null; it.lng = null; it.geoKey = key; it.geoFail = true; changed = true; }
@@ -3691,6 +3702,7 @@ function openItemModal(existing, opts){
   const modalScope = opts.forceScope || (editing ? (groupItems.includes(existing) ? 'group' : 'personal') : (scope==='group'?'group':'personal'));
   const prefillCand = opts.prefillCandidate || null;
   const prefillBk = opts.prefillBooking || null;
+  const brBranches = prefillCand ? [{ address: prefillCand.address||'', mapUrl: prefillCand.mapUrl||'' }].concat((prefillCand.more||[]).map(m=>({ address:m.address||'', mapUrl:m.mapUrl||'' }))) : [];
   const it = existing || {
     id: uid(), title: prefillCand? prefillCand.name : (prefillBk ? bkItemTitle(prefillBk) : ''),
     date: opts.presetDate || (prefillBk && prefillBk.date && dates.includes(prefillBk.date) ? prefillBk.date : dates[0]),
@@ -3760,6 +3772,7 @@ function openItemModal(existing, opts){
           <label>地點</label>
           <input type="text" id="f-location" placeholder="例如：築地場外市場" value="${escapeHtml(it.location||'')}">
         </div>
+        ${brBranches.length>1 ? `<div class="field"><label>🏬 揀去邊間分店</label><select id="f-branch">${brBranches.map((b,i)=>`<option value="${i}">分店 ${i+1}：${escapeHtml((b.address||b.mapUrl||'（未填地址）').slice(0,32))}</option>`).join('')}</select></div>` : ''}
         <div class="field">
           <label>詳細地址（地圖只跟呢欄同下面嘅連結，唔跟「地點」）</label>
           <input type="text" id="f-address" placeholder="例如：東京都中央區築地 4 丁目 16-2" value="${escapeHtml(it.address||'')}">
@@ -3830,6 +3843,8 @@ function openItemModal(existing, opts){
   });
 
   const lab = wireLabelFields(overlay, it.tag||'', it.color||'');
+  const brSel = overlay.querySelector('#f-branch');
+  if(brSel) brSel.onchange = ()=>{ const b = brBranches[+brSel.value]; if(!b) return; overlay.querySelector('#f-address').value = b.address || ''; overlay.querySelector('#f-mapurl').value = b.mapUrl || ''; };
 
   // ---- 車程：多個交通方案 ----
   let isTransit = it.type==='transit';
@@ -4076,6 +4091,7 @@ function renderCandidatesPanel(){
             <div class="candidate-name">${escapeHtml(c.name)}</div>
             ${c.location ? `<div class="candidate-loc">📍 ${escapeHtml(c.location)}</div>` : ''}
             ${mlink ? `<div class="candidate-loc"><a href="${escapeHtml(mlink)}" target="_blank" rel="noopener">🗺 睇地圖</a></div>` : ''}
+            ${(c.more||[]).length ? `<div class="candidate-loc">🏬 共 ${1+c.more.length} 間分店：${mlink ? `<a href="${escapeHtml(mlink)}" target="_blank" rel="noopener">1</a>` : '1'}${c.more.map((m,i)=>{ const ml = mapLink(m); return ' · ' + (ml ? `<a href="${escapeHtml(ml)}" target="_blank" rel="noopener">${i+2}</a>` : (i+2)); }).join('')}</div>` : ''}
           </div>
         </div>
         ${c.notes ? `<div class="candidate-notes">${escapeHtml(c.notes)}</div>` : ''}
@@ -4160,6 +4176,7 @@ function openCandidateModal(existing){
         <div class="field"><label>備註（可留空）</label><textarea id="c-notes" placeholder="點解想去、有咩要留意…">${ex ? escapeHtml(ex.notes||'') : ''}</textarea></div>
         <div class="field"><label>詳細地址（地圖只跟呢欄同下面嘅連結，唔跟「地點」）</label><input type="text" id="c-address" value="${ex ? escapeHtml(ex.address||'') : ''}"></div>
         <div class="field"><label>Google Map 連結（可留空）</label><input type="url" id="c-mapurl" placeholder="貼上 Google Map 分享連結" value="${ex ? escapeHtml(ex.mapUrl||'') : ''}"></div>
+        <div class="field" id="c-more-box"><div id="c-more-rows"></div><button type="button" class="ghost-btn" id="c-more-add">＋ 加另一間分店（未決定去邊間）</button></div>
         <div class="field"><label>Instagram 連結（可留空）</label><input type="text" id="c-ig" placeholder="貼上 IG 連結或 @帳號" value="${ex ? escapeHtml(ex.igUrl||'') : ''}"></div>
         ${labelFieldsHtml(ex ? ex.tag : '', ex ? ex.color : '')}
         <div class="field">
@@ -4182,6 +4199,25 @@ function openCandidateModal(existing){
   overlay.querySelector('#c-cancel').onclick = close;
   overlay.addEventListener('mousedown', (e)=>{ if(e.target===overlay) close(); });
   const lab = wireLabelFields(overlay, ex ? (ex.tag||'') : '', ex ? (ex.color||'') : '');
+  let more = ((ex && ex.more) || []).map(m=> Object.assign({}, m));
+  const moreRows = overlay.querySelector('#c-more-rows');
+  function renderMore(){
+    moreRows.innerHTML = more.map((m,i)=>`
+      <div class="br-row" data-i="${i}">
+        <span class="br-n">分店 ${i+2}</span>
+        <input type="text" class="br-addr" placeholder="詳細地址" value="${escapeHtml(m.address||'')}">
+        <input type="url" class="br-url" placeholder="Google Map 連結（可留空）" value="${escapeHtml(m.mapUrl||'')}">
+        <button type="button" class="tr-del" title="刪除">✕</button>
+      </div>`).join('');
+    moreRows.querySelectorAll('.br-row').forEach(row=>{
+      const i = +row.dataset.i;
+      row.querySelector('.br-addr').oninput = e=>{ more[i].address = e.target.value; };
+      row.querySelector('.br-url').oninput = e=>{ more[i].mapUrl = e.target.value; };
+      row.querySelector('.tr-del').onclick = ()=>{ more.splice(i,1); renderMore(); };
+    });
+  }
+  overlay.querySelector('#c-more-add').onclick = ()=>{ more.push({ id: uid(), address:'', mapUrl:'' }); renderMore(); const last = moreRows.querySelector('.br-row:last-child .br-addr'); if(last) last.focus(); };
+  renderMore();
   const delBtn = overlay.querySelector('#c-del');
   if(delBtn) delBtn.onclick = async ()=>{ if(await deleteCandidate(ex.id)){ close(); renderApp(); } };
   overlay.querySelector('#c-save').onclick = async ()=>{
@@ -4194,12 +4230,13 @@ function openCandidateModal(existing){
     const loc = overlay.querySelector('#c-loc').value.trim();
     const notes = overlay.querySelector('#c-notes').value.trim();
     const igUrl = normIg(overlay.querySelector('#c-ig').value);
+    const moreOut = more.filter(m=> (m.address||'').trim() || cleanMapUrl(m.mapUrl)).map(m=>({ id:m.id, address:(m.address||'').trim(), mapUrl: cleanMapUrl(m.mapUrl), lat:m.lat, lng:m.lng, geoKey:m.geoKey, geoSrc:m.geoSrc, geoApprox:m.geoApprox, geoFail:m.geoFail }));
     await lab.persist();
     if(ex){
       const c = candidates.find(x=> x.id===ex.id);
-      if(c){ c.name = name; c.location = loc; c.address = address; c.mapUrl = mapUrl; c.igUrl = igUrl; c.tag = lab.tag(); c.color = lab.color(); c.notes = notes; if(pri) c.pri = pri; }
+      if(c){ c.name = name; c.location = loc; c.address = address; c.mapUrl = mapUrl; c.igUrl = igUrl; c.more = moreOut.length ? moreOut : undefined; c.tag = lab.tag(); c.color = lab.color(); c.notes = notes; if(pri) c.pri = pri; }
     } else {
-      candidates.push({ id: uid(), name, location: loc, address, mapUrl, igUrl, tag: lab.tag(), color: lab.color(), notes, proposedBy: myName, pri: pri||'must', joined: [], addedAt: Date.now() });
+      candidates.push({ id: uid(), name, location: loc, address, mapUrl, igUrl, more: moreOut.length ? moreOut : undefined, tag: lab.tag(), color: lab.color(), notes, proposedBy: myName, pri: pri||'must', joined: [], addedAt: Date.now() });
     }
     await sset('candidates', candidates, true);
     close();
