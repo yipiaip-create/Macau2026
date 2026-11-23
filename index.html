@@ -309,6 +309,7 @@
   .plan-hint{font-size:11px; opacity:.65;}
   .plan-a{box-shadow:inset 6px 0 0 #E4572E !important;}
   .plan-b{box-shadow:inset 6px 0 0 #2E86AB !important;}
+  .cand-used{opacity:.7; font-weight:600;}
   .map-pin.pl1{border-radius:6px;} .map-pin.pl2{border-radius:50% 50% 50% 0;}
   .map-list{margin-top:10px; font-size:13px; line-height:1.6;}
   .map-list .ml-row{display:flex; gap:8px; align-items:baseline; padding:4px 2px; border-bottom:1px dashed rgba(64,49,31,.25);}
@@ -1545,6 +1546,10 @@ function planIdx(id){ return Math.max(0, planList().findIndex(p=>p.id===id)); }
 function selPlans(){ const ids = planList().map(p=>p.id); let a = (planSel||[]).filter(i=>ids.includes(i)); if(!a.length) a = [ids[0]]; return a.slice(0,2); }
 function mapPlans(){ const ids = planList().map(p=>p.id); const a = (mapPlanSel||[]).filter(i=>ids.includes(i)); return a.length ? a : selPlans(); }
 function gVis(){ const a = selPlans(); return groupItems.filter(x=>a.includes(planOf(x))); }
+function candPlans(cid){ return Array.from(new Set(groupItems.filter(x=>x.fromCand===cid).map(planOf))); }
+function candHidden(c, ids){ const p = candPlans(c.id); return p.length>0 && ids.every(i=>p.includes(i)); }
+function candPool(){ const a = selPlans(); return candidates.filter(c=>!candHidden(c, a)); }
+function candBadge(c){ const a = selPlans(); const o = candPlans(c.id).filter(i=>!a.includes(i)); return (o.length && planList().length>1) ? ` <small class="cand-used">已入：${o.map(planName).map(escapeHtml).join('、')}</small>` : ''; }
 function planBarHtml(){
   const sp = selPlans();
   const chips = planList().map(p=>{ const k = sp.indexOf(p.id); return `<label class="plan-chip${k>=0?' on':''}" style="--pc:${PLAN_COLORS[k>=0?k:0]}"><input type="checkbox" data-plan="${p.id}" ${k>=0?'checked':''}>${escapeHtml(p.name)}</label>`; }).join('');
@@ -2068,7 +2073,7 @@ function renderApp(){
       </div>
       
 
-      ${scope==='group' ? planBarHtml() : ''}
+      ${(scope==='group'||scope==='candidates') ? planBarHtml() : ''}
       <div id="scope-content"></div>
     </div>
   `;
@@ -2117,7 +2122,7 @@ function renderApp(){
     }catch(err){ toast('讀唔到呢張相，試下另一張'); }
   });
   const addItemBtn = document.getElementById('add-item-btn');
-  if(addItemBtn) addItemBtn.onclick = ()=>{ addPlanTarget = null; if(scope==='group'){ const sp = selPlans(); if(sp.length>1) addPlanTarget = confirm('加去「' + planName(sp[0]) + '」？\n（按取消 = 加去「' + planName(sp[1]) + '」）') ? sp[0] : sp[1]; } openItemModal(null, {forceScope: scope==='group'?'group':'personal'}); };
+  if(addItemBtn) addItemBtn.onclick = ()=>{ let pt = null; if(scope==='group'){ const sp = selPlans(); if(sp.length>1) pt = confirm('加去「' + planName(sp[0]) + '」？\n（按取消 = 加去「' + planName(sp[1]) + '」）') ? sp[0] : sp[1]; } openItemModal(null, {forceScope: scope==='group'?'group':'personal', planTarget: pt}); };
   const addCandBtn = document.getElementById('add-candidate-btn');
   if(addCandBtn) addCandBtn.onclick = ()=> openCandidateModal(null);
 
@@ -2480,10 +2485,10 @@ function candidatesDrawerHtml(mode){
     const chipsVote = `<span class="priority-chip ${pri0==='must'?'must':'nice'}">${pri0==='must'?'必去':'想去'}</span> <span class="priority-chip nice">👥 ${candJoiners(c).length}</span>`;
     const k0 = labelKey(c);
     let head = '';
-    if(k0 !== _lk){ _lk = k0; head = `<div class="cc-grouphead" style="${c.color ? 'background:'+c.color+';color:'+readableOn(c.color)+';' : ''}">${k0 ? escapeHtml(k0) : '未分類'} · ${candidates.filter(x=> labelKey(x)===k0).length}</div>`; }
+    if(k0 !== _lk){ _lk = k0; head = `<div class="cc-grouphead" style="${c.color ? 'background:'+c.color+';color:'+readableOn(c.color)+';' : ''}">${k0 ? escapeHtml(k0) : '未分類'} · ${candPool().filter(x=> labelKey(x)===k0).length}</div>`; }
     return head + `
       <div class="candidate-chip" draggable="${mode==='compare'?'false':'true'}" data-cid="${c.id}">
-        <div class="cc-name">${escapeHtml(c.name)}</div>
+        <div class="cc-name">${escapeHtml(c.name)}${candBadge(c)}</div>
         ${c.location ? `<div class="cc-loc">📍 ${escapeHtml(c.location)}</div>` : ''}
         ${(c.more||[]).length ? `<div class="cc-loc">🏬 ${1+c.more.length} 間分店</div>` : ''}
         ${chipsVote ? `<div class="cc-votes">${chipsVote}</div>` : ''}
@@ -2502,13 +2507,13 @@ function candidatesDrawerHtml(mode){
       <div class="candidates-drawer-head">
         <button type="button" class="cd-toggle" id="cd-toggle">${candidatesDrawerOpen?'▾':'▸'}</button>
         <b>候選地點</b>
-        <span class="cd-count">${candidates.length} 個</span>
+        <span class="cd-count">${candPool().length} 個</span>
         <div class="spacer"></div>
         <button type="button" class="cd-add" id="cd-add">＋ 加候選</button>
       </div>
       <div class="candidates-drawer-hint">${hint}</div>
       <div class="candidates-drawer-body">
-        ${candidates.length ? chips : `<div class="candidates-drawer-empty">未有候選地點，撳右上角「＋ 加候選」加返啲想去但未決定日期嘅地方。</div>`}
+        ${candPool().length ? chips : `<div class="candidates-drawer-empty">未有候選地點，撳右上角「＋ 加候選」加返啲想去但未決定日期嘅地方。</div>`}
       </div>
     </div>`;
 }
@@ -3404,7 +3409,7 @@ function mapPoints(){
                tried: false });
   };
   if(mapFilter.group) groupItems.filter(it=> mapPlans().includes(planOf(it)) && it.type!=='transit' && !mapDaysOff.has(dayIndexOf(it.date))).forEach(it=> mk('group', it, it.title));
-  if(mapFilter.cand) candidates.forEach(c=>{
+  if(mapFilter.cand) candidates.filter(c=>!candHidden(c, mapPlans())).forEach(c=>{
     const nb = (c.more||[]).length;
     mk('cand', c, nb ? c.name + '（分店 1）' : c.name);
     (c.more||[]).forEach((m,i)=> mk('cand', m, c.name + '（分店 ' + (i+2) + '）', c.id + '#b' + m.id));
@@ -3767,7 +3772,7 @@ function wireLabelFields(overlay, tag0, color0){
   };
 }
 function candidatesByLabel(){
-  return candidates.slice().sort((a,b)=>{
+  return candPool().slice().sort((a,b)=>{
     const ka = labelKey(a), kb = labelKey(b);
     if(!ka !== !kb) return ka ? -1 : 1;
     const r = ka.localeCompare(kb, 'zh'); if(r) return r;
@@ -4194,7 +4199,8 @@ function openItemModal(existing, opts){
       color: lab.color(),
       fromBooking: it.fromBooking || undefined,
       owner: it.owner || myName,
-      plan: currentScope==='group' ? (it.plan || (editing ? planOf(it) : (addPlanTarget || selPlans()[0]))) : undefined,
+      plan: currentScope==='group' ? (it.plan || (editing ? planOf(it) : (opts.planTarget || selPlans()[0]))) : undefined,
+      fromCand: currentScope==='group' ? (it.fromCand || (prefillCand ? prefillCand.id : undefined)) : undefined,
       participants: (function(){ let ps = ((it.participants||[]).length || (editing && modalScope===currentScope)) ? (it.participants||[]).slice() : (currentScope==='group' ? [myName] : []); const ow = it.owner || myName; if(currentScope==='group' && !ps.includes(ow)) ps.unshift(ow); return ps; })(),
       visibility: currentScope==='personal'
         ? (overlay.querySelector('input[name="f-visibility"]:checked')||{}).value || 'private'
@@ -4218,7 +4224,7 @@ function openItemModal(existing, opts){
       await syncPublicPersonal();
     }
 
-    if(prefillCand){
+    if(prefillCand && currentScope!=='group'){
       candidates = candidates.filter(c=>c.id!==prefillCand.id);
       await sset('candidates', candidates, true);
     }
@@ -4314,6 +4320,7 @@ function renderCandidatesPanel(){
     mount.innerHTML = `<div class="empty-note">仲未有候選地點，撳右上角「＋ 加候選地點」加返啲想去但未決定日期嘅地方。</div>`;
     return;
   }
+  if(!candPool().length){ mount.innerHTML = `<div class="empty-note">所有候選地點都已經排入「${escapeHtml(planName(selPlans()[0]))}」。切換去其他方案可以再用返佢哋。</div>`; return; }
   const sortedC = candidatesByLabel();
   const cardsArr = sortedC.map(c=>{
     const pri = candPri(c);
