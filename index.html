@@ -273,6 +273,8 @@
   .note-a{color:#2a6fb0; text-decoration:underline; word-break:break-all;}
   .note-links{display:flex; flex-direction:column; gap:3px; margin-top:5px; font-size:12.5px;}
   .note-links a{color:#2a6fb0; word-break:break-all;}
+  .color-custom{position:relative; display:inline-flex; width:28px; height:28px; border-radius:50%; border:2px dashed var(--ink); align-items:center; justify-content:center; font-size:14px; cursor:pointer; background:#fff; overflow:hidden; vertical-align:middle;}
+  .color-custom input{position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; padding:0; border:none;}
   .lab-chips{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;}
   .lab-chip{border:1.5px solid var(--ink); border-radius:999px; padding:3px 11px; font-size:12px; font-weight:700; cursor:pointer;}
   .lab-note{font-size:12px; color:var(--ink-soft);}
@@ -1483,7 +1485,19 @@ const TAG_COLORS = [
   {key:'periwinkle', label:'風信子藍', value:'#7484BF'},
   {key:'plum', label:'李子紫', value:'#8A5F92'},
   {key:'rose', label:'玫瑰粉', value:'#C97188'},
-  {key:'charcoal', label:'墨灰', value:'#5C564C'}
+  {key:'charcoal', label:'墨灰', value:'#5C564C'},
+  {key:'red', label:'正紅', value:'#D64545'},
+  {key:'orange', label:'橙', value:'#F28C28'},
+  {key:'lime', label:'青檸', value:'#A4C639'},
+  {key:'forest', label:'森林綠', value:'#3F7D58'},
+  {key:'teal', label:'湖水綠', value:'#2A9D8F'},
+  {key:'blue', label:'亮藍', value:'#3D8BFD'},
+  {key:'navy', label:'深藍', value:'#2F4B7C'},
+  {key:'violet', label:'紫', value:'#7B4FBF'},
+  {key:'magenta', label:'洋紅', value:'#C2377E'},
+  {key:'brown', label:'咖啡', value:'#7A5230'},
+  {key:'cream', label:'奶油', value:'#E9D8A6'},
+  {key:'slate', label:'石板灰', value:'#8B95A1'}
 ];
 
 function uid(){ return Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4); }
@@ -3548,6 +3562,8 @@ function labelFieldsHtml(tag, color){
               <label>顏色</label>
               <div class="color-swatches" id="color-swatches">
                 ${TAG_COLORS.map(c=>`<button type="button" class="color-swatch ${(color||'')===c.value?'on':''}" data-color="${c.value}" title="${c.label}" style="${c.value? 'background:'+c.value+';':'background:#fff;'}"></button>`).join('')}
+                ${(color && !TAG_COLORS.some(c=>c.value===color)) ? `<button type="button" class="color-swatch custom on" data-color="${escapeHtml(color)}" title="自訂顏色" style="background:${escapeHtml(color)};"></button>` : ''}
+                <label class="color-custom" title="自己調色">🎨<input type="color" id="lab-color-pick" value="${/^#[0-9a-fA-F]{6}$/.test(color||'') ? color : '#E0AF2E'}"></label>
               </div>
             </div>
           </div>
@@ -3556,13 +3572,28 @@ function labelFieldsHtml(tag, color){
 function wireLabelFields(overlay, tag0, color0){
   let color = color0 || '';
   const inp = overlay.querySelector('#lab-tag');
-  const sws = overlay.querySelectorAll('.color-swatch');
+  const box = overlay.querySelector('#color-swatches');
+  const pick = overlay.querySelector('#lab-color-pick');
   const labelOf = c=> (c && trip && trip.labels && trip.labels[c]) || '';
   let auto = !(tag0||'').trim();
-  const paint = ()=> sws.forEach(b=> b.classList.toggle('on', b.dataset.color===color));
-  sws.forEach(b=>{ b.onclick = ()=>{ color = b.dataset.color; paint(); const l = labelOf(color); if(l && (auto || !inp.value.trim())){ inp.value = l; auto = true; } }; });
+  const paint = ()=> box.querySelectorAll('.color-swatch').forEach(b=> b.classList.toggle('on', b.dataset.color===color));
+  const afterColor = ()=>{ paint(); const l = labelOf(color); if(l && (auto || !inp.value.trim())){ inp.value = l; auto = true; } };
+  function ensureSwatch(c){
+    if(!c || box.querySelector('.color-swatch[data-color="' + c + '"]')) return;
+    let cs = box.querySelector('.color-swatch.custom');
+    if(!cs){
+      cs = document.createElement('button'); cs.type = 'button'; cs.className = 'color-swatch custom'; cs.title = '自訂顏色';
+      box.insertBefore(cs, box.querySelector('.color-custom'));
+    }
+    cs.dataset.color = c; cs.style.background = c;
+  }
+  box.addEventListener('click', e=>{
+    const b = e.target.closest('.color-swatch'); if(!b) return;
+    color = b.dataset.color; afterColor();
+  });
+  if(pick) pick.addEventListener('input', ()=>{ color = pick.value.toUpperCase(); ensureSwatch(color); afterColor(); });
   inp.addEventListener('input', ()=>{ auto = false; });
-  overlay.querySelectorAll('.lab-chip').forEach(ch=>{ ch.onclick = ()=>{ color = ch.dataset.color; inp.value = ch.dataset.tag; auto = true; paint(); }; });
+  overlay.querySelectorAll('.lab-chip').forEach(ch=>{ ch.onclick = ()=>{ color = ch.dataset.color; ensureSwatch(color); inp.value = ch.dataset.tag; auto = true; paint(); }; });
   paint();
   return {
     tag: ()=> inp.value.trim().slice(0,10),
