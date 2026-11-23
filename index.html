@@ -819,6 +819,22 @@
   .cc-join.on{background:var(--blue-deep); color:#fff;}
   .cc-owner{margin-top:6px; font-size:11px; color:var(--ink-soft);}
 
+  /* ---------- v5: 卡片統一置中、短卡顯示完整名、取消預設粗框 ---------- */
+  .item-card.joined-me{box-shadow:none;}
+  .item-card, .item-card.compact{display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center;}
+  .item-card .item-title{text-align:center; overflow-wrap:anywhere; word-break:normal; padding-left:14px; padding-right:14px; letter-spacing:.01em;}
+  .item-card.compact .item-title{-webkit-line-clamp:2; padding-left:14px; padding-right:14px; letter-spacing:0;}
+  .item-card.compact.tall .item-title{-webkit-line-clamp:3;}
+  .item-card.compact .item-loc{justify-content:center; text-align:center; display:block;}
+  .item-card .item-owner, .item-owner.sm{align-self:center;}
+  .item-card.short{flex-direction:row; flex-wrap:wrap; align-content:center; justify-content:center; align-items:center; column-gap:5px; row-gap:0;}
+  .item-card.short .item-time{flex:none; max-width:none; overflow:visible;}
+  .item-card.short .item-title{display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; flex:0 1 auto; min-width:0; padding:0 16px 0 0; font-size:10.5px; line-height:1.15;}
+  .item-card.short .it-inl{display:none;}
+  .bd-w{display:flex; gap:6px; margin-bottom:8px;}
+  .bd-w button{flex:1; padding:6px 4px; border:1.5px solid var(--line-strong); border-radius:10px; background:#fff; font-size:12px; font-weight:700; cursor:pointer;}
+  .bd-w button.on{background:var(--ink); color:#fff; border-color:var(--ink);}
+
   /* ---------- Members bar ---------- */
   .member-bar{margin:14px 0 4px; padding:10px 12px; border:1.5px dashed var(--line-strong); border-radius:16px; background:rgba(255,255,255,.55);}
   .mb-head{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;}
@@ -2169,7 +2185,7 @@ function buildDayItems(mode, dateStr){
     const cfg = Object.assign({
       key, id: it.id, title: it.title, time: it.time, duration: it.duration,
       location: it.location, address: it.address, mapUrl: it.mapUrl, igUrl: it.igUrl, type: it.type, options: it.options, chosen: it.chosen, lat: it.lat, lng: it.lng, geoKey: it.geoKey, geoSrc: it.geoSrc, photos: it.photos||[], colorClass: 'personal',
-      tag: it.tag||'', color: it.color||'',
+      tag: it.tag||'', color: it.color||'', bw: it.bw, bc: it.bc, pri: it.pri,
       sourceType: 'personal', editable: false, showJoin: false, conflict: false,
       leftPct: 2, widthPct: 96, ownerTag: null
     }, opts);
@@ -2181,7 +2197,7 @@ function buildDayItems(mode, dateStr){
     const cfg = Object.assign({
       key, id: it.id, title: it.title, time: it.time, duration: it.duration,
       location: it.location, address: it.address, mapUrl: it.mapUrl, igUrl: it.igUrl, type: it.type, options: it.options, chosen: it.chosen, lat: it.lat, lng: it.lng, geoKey: it.geoKey, geoSrc: it.geoSrc, photos: it.photos||[], colorClass: 'group',
-      tag: it.tag||'', color: it.color||'',
+      tag: it.tag||'', color: it.color||'', bw: it.bw, bc: it.bc, pri: it.pri,
       sourceType: 'group', editable: false, showJoin: false, conflict: false,
       leftPct: 2, widthPct: 96, ownerTag: it.owner, groupId: it.id
     }, opts);
@@ -2277,7 +2293,7 @@ function itemCardHtml(cfg){
     posStyle = `left:${left}px; width:${width}px; top:${cfg.leftPct}%; height:${cfg.widthPct}%;`;
   } else {
     const top = Math.max(0, startM/60*ROW_H);
-    const height = Math.max(32, (cfg.duration/60)*ROW_H - 3);
+    const height = Math.max(36, (cfg.duration/60)*ROW_H - 3);
     hpx = height;
     posStyle = `top:${top}px; height:${height}px; left:${cfg.leftPct}%; width:${cfg.widthPct}%;`;
   }
@@ -2285,7 +2301,8 @@ function itemCardHtml(cfg){
   const ownerHtml = (cfg.ownerTag && !compact) ? `<div class="item-owner${cfg.ownerSmall?' sm':''}">${escapeHtml(cfg.ownerTag)}</div>` : '';
   const conflictHtml = cfg.conflict ? `<div class="conflict-badge">⚠ 撞期</div>` : '';
   const tagHtml = (cfg.tag && !compact) ? `<div class="item-tag">${escapeHtml(cfg.tag)}</div>` : '';
-  const colorStyle = cfg.color ? `background:${cfg.color};color:${readableOn(cfg.color)};` : '';
+  const bwN = +cfg.bw || 0;
+  const colorStyle = (cfg.color ? `background:${cfg.color};color:${readableOn(cfg.color)};` : '') + (bwN>0 ? `box-shadow:inset 0 0 0 ${bwN}px ${cfg.bc||'#3F3426'};` : '');
   let joinHtml = '';
   if(cfg.showJoin){
     const it = groupItems.find(x=>x.id===cfg.groupId);
@@ -2320,7 +2337,7 @@ function itemCardHtml(cfg){
       ${conflictHtml}
       ${ownerHtml}
       <div class="item-time">${cfg.time}–${endTimeStr(cfg.time,cfg.duration)}</div>
-      <div class="item-title">${cfg.type==='transit' ? (trCh ? trMode(trCh.mode).i : '🚌') + ' ' : ''}${escapeHtml(cfg.title)}${(+cfg.duration<=45 && cfg.location) ? ` <span class="it-inl">📍${escapeHtml(cfg.location)}</span>` : ''}</div>
+      <div class="item-title">${cfg.type==='transit' ? (trCh ? trMode(trCh.mode).i : '🚌') + ' ' : ''}${cfg.pri==='must' ? '★ ' : ''}${escapeHtml(cfg.title)}${(+cfg.duration<=45 && cfg.location) ? ` <span class="it-inl">📍${escapeHtml(cfg.location)}</span>` : ''}</div>
       ${trLine}
       ${(cfg.location && !(+cfg.duration<=45)) ? `<div class="item-loc">📍 ${escapeHtml(cfg.location)}</div>` : ''}
       ${tagHtml}
@@ -3748,6 +3765,31 @@ function teamLabelChipsHtml(){
   if(!keys.length) return '<span class="lab-note">未有團隊標籤：揀個顏色再填標籤，大家之後都用到。</span>';
   return keys.map(k=>`<button type="button" class="lab-chip" data-color="${escapeHtml(k)}" data-tag="${escapeHtml(L[k])}" style="background:${k};color:${readableOn(k)};">${escapeHtml(L[k])}</button>`).join('');
 }
+function borderFieldHtml(bw, bc){
+  const ws = [[0,'無框'],[2,'細'],[4,'中'],[6,'粗']];
+  const cols = TAG_COLORS.filter(c=>c.value);
+  return `<div class="field" id="bd-field">
+    <label>卡片外框（可選）</label>
+    <div class="bd-w">${ws.map(w=>`<button type="button" data-bw="${w[0]}" class="${(+bw||0)===w[0]?'on':''}">${w[1]}</button>`).join('')}</div>
+    <div class="color-swatches" id="bd-colors">
+      ${cols.map(c=>`<button type="button" class="color-swatch ${(bc||'')===c.value?'on':''}" data-color="${c.value}" title="${c.label}" style="background:${c.value};"></button>`).join('')}
+      <label class="color-custom" title="自己調色">🎨<input type="color" id="bd-pick" value="${/^#[0-9a-fA-F]{6}$/.test(bc||'') ? bc : '#3F3426'}"></label>
+    </div>
+  </div>`;
+}
+function wireBorderFields(overlay, bw0, bc0){
+  let bw = +bw0 || 0, bc = bc0 || '';
+  const box = overlay.querySelector('#bd-field');
+  const paint = ()=>{
+    box.querySelectorAll('.bd-w button').forEach(b=> b.classList.toggle('on', +b.dataset.bw===bw));
+    box.querySelectorAll('#bd-colors .color-swatch').forEach(b=> b.classList.toggle('on', b.dataset.color===bc));
+  };
+  box.querySelectorAll('.bd-w button').forEach(b=>{ b.onclick = ()=>{ bw = +b.dataset.bw; if(bw>0 && !bc) bc = '#3F3426'; paint(); }; });
+  box.querySelectorAll('#bd-colors .color-swatch').forEach(b=>{ b.onclick = ()=>{ bc = b.dataset.color; if(!bw) bw = 3; paint(); }; });
+  const pick = box.querySelector('#bd-pick');
+  if(pick) pick.oninput = ()=>{ bc = pick.value; if(!bw) bw = 3; paint(); };
+  return { bw: ()=> bw, bc: ()=> (bw>0 ? bc : '') };
+}
 function labelFieldsHtml(tag, color){
   return `
         <div class="field">
@@ -3945,7 +3987,7 @@ function openViewModal(cfg){
       <div class="modal-body">
         ${cfg.ownerTag ? `<div style="font-size:12px;color:var(--ink-soft);">${escapeHtml(cfg.ownerTag)}</div>` : ''}
         ${cfg.groupId ? joinBlockHtml(cfg.groupId) : ''}
-        <div style="font-family:var(--font-display);font-weight:700;">${cfg.time} · ${cfg.duration}分鐘</div>
+        <div style="font-family:var(--font-display);font-weight:700;">${cfg.time} · ${cfg.duration}分鐘${cfg.pri==='must' ? ' <span class="priority-chip must">★ 必去</span>' : ''}</div>
         ${cfg.location ? `<div style="font-size:13px;color:var(--ink-soft);">📍 ${escapeHtml(cfg.location)}</div>` : ''}
         ${mapBlockHtml({ address:cfg.address, mapUrl:cfg.mapUrl, location:cfg.location, title:cfg.title, lat:cfg.lat, lng:cfg.lng, geoKey:cfg.geoKey, geoSrc:cfg.geoSrc }, false)}
         ${cfg.type==='transit' ? transitViewHtml(cfg) : ''}
@@ -3984,7 +4026,7 @@ function openItemModal(existing, opts){
     notes: prefillCand? (prefillCand.notes||'') : (prefillBk ? bkItemNotes(prefillBk) : ''),
     photos: prefillCand ? (prefillCand.photos||[]).slice() : [], owner: myName,
     participants: (prefillCand && modalScope==='group') ? candJoiners(prefillCand) : ((prefillBk && modalScope==='group') ? (Array.isArray(prefillBk.members) && prefillBk.members.length ? prefillBk.members.slice() : [myName]) : []),
-    visibility:'private', tag: prefillCand ? (prefillCand.tag||'') : (prefillBk ? bkType(prefillBk.type).label : ''), color: prefillCand ? (prefillCand.color||'') : '', igUrl: prefillCand ? (prefillCand.igUrl||'') : '',
+    visibility:'private', pri: prefillCand ? candPri(prefillCand) : undefined, tag: prefillCand ? (prefillCand.tag||'') : (prefillBk ? bkType(prefillBk.type).label : ''), color: prefillCand ? (prefillCand.color||'') : '', igUrl: prefillCand ? (prefillCand.igUrl||'') : '',
     fromBooking: prefillBk ? prefillBk.id : undefined
   };
   let currentScope = modalScope;
@@ -4062,6 +4104,16 @@ function openItemModal(existing, opts){
           <textarea id="f-notes" placeholder="想食咩、注意事項…">${escapeHtml(it.notes||'')}</textarea>
         </div>
         ${labelFieldsHtml(it.tag, it.color)}
+        ${borderFieldHtml(it.bw, it.bc)}
+        <div class="field" id="pri-field" style="${currentScope==='group'?'':'display:none;'}">
+          <label>呢個活動係唔係必去？</label>
+          ${(!editing || (it.owner||myName)===myName)
+            ? `<div class="priority-radio">
+                <label><input type="radio" name="f-pri" value="must" ${it.pri==='must'?'checked':''}>★ 必去</label>
+                <label><input type="radio" name="f-pri" value="nice" ${it.pri==='must'?'':'checked'}>想去（冇咩所謂）</label>
+              </div><div style="font-size:11px;color:var(--ink-soft);margin-top:4px;">發起人自己決定，唔使其他人投票</div>`
+            : `<div>${it.pri==='must' ? '<span class="priority-chip must">★ 必去</span>' : '<span class="priority-chip nice">想去</span>'} <span style="font-size:11px;color:var(--ink-soft);">（淨係發起人可以改）</span></div>`}
+        </div>
         <div class="field" id="public-field" style="${currentScope==='personal'?'':'display:none;'}">
           <label>隊友可以睇到幾多</label>
           <div class="visibility-radio">
@@ -4113,6 +4165,7 @@ function openItemModal(existing, opts){
   });
 
   const lab = wireLabelFields(overlay, it.tag||'', it.color||'');
+  const bd = wireBorderFields(overlay, it.bw, it.bc);
   wireNoteLinks(overlay, '#f-notes');
   { const igIn = overlay.querySelector('#f-ig'), igBox = overlay.querySelector('#f-ig-btn'); if(igIn && igBox) igIn.addEventListener('input', ()=>{ igBox.innerHTML = igBtnHtml(normIg(igIn.value)); }); }
   const brSel = overlay.querySelector('#f-branch');
@@ -4173,12 +4226,14 @@ function openItemModal(existing, opts){
     overlay.querySelector('.opt-personal').className='opt-personal on personal';
     overlay.querySelector('.opt-group').className='opt-group';
     overlay.querySelector('#public-field').style.display='';
+    overlay.querySelector('#pri-field').style.display='none';
   };
   overlay.querySelector('.opt-group').onclick = ()=>{
     currentScope='group';
     overlay.querySelector('.opt-group').className='opt-group on group';
     overlay.querySelector('.opt-personal').className='opt-personal';
     overlay.querySelector('#public-field').style.display='none';
+    overlay.querySelector('#pri-field').style.display='';
   };
 
   function close(){ overlay.remove(); }
@@ -4228,6 +4283,8 @@ function openItemModal(existing, opts){
       photos,
       tag: lab.tag(),
       color: lab.color(),
+      bw: bd.bw() || undefined, bc: bd.bc() || undefined,
+      pri: currentScope==='group' ? ((overlay.querySelector('input[name="f-pri"]:checked')||{}).value || it.pri || 'nice') : undefined,
       fromBooking: it.fromBooking || undefined,
       owner: it.owner || myName,
       plan: currentScope==='group' ? (it.plan || (editing ? planOf(it) : (opts.planTarget || selPlans()[0]))) : undefined,
