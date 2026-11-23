@@ -4040,7 +4040,7 @@ function openItemModal(existing, opts){
         <div class="field">
           <label>Instagram 連結（可留空）</label>
           <input type="text" id="f-ig" placeholder="貼上 IG 連結或 @帳號" value="${escapeHtml(it.igUrl||'')}">
-          ${igBtnHtml(it.igUrl)}
+          <div id="f-ig-btn">${igBtnHtml(normIg(it.igUrl||''))}</div>
         </div>
         <div class="field">
           <label>備註</label>
@@ -4099,6 +4099,7 @@ function openItemModal(existing, opts){
 
   const lab = wireLabelFields(overlay, it.tag||'', it.color||'');
   wireNoteLinks(overlay, '#f-notes');
+  { const igIn = overlay.querySelector('#f-ig'), igBox = overlay.querySelector('#f-ig-btn'); if(igIn && igBox) igIn.addEventListener('input', ()=>{ igBox.innerHTML = igBtnHtml(normIg(igIn.value)); }); }
   const brSel = overlay.querySelector('#f-branch');
   if(brSel) brSel.onchange = ()=>{ const b = brBranches[+brSel.value]; if(!b) return; overlay.querySelector('#f-address').value = b.address || ''; overlay.querySelector('#f-mapurl').value = b.mapUrl || ''; };
 
@@ -4437,7 +4438,7 @@ function openCandidateModal(existing){
         <div class="field"><label>詳細地址（地圖只跟呢欄同下面嘅連結，唔跟「地點」）</label><input type="text" id="c-address" value="${ex ? escapeHtml(ex.address||'') : ''}"></div>
         <div class="field"><label>Google Map 連結（可留空）</label><input type="url" id="c-mapurl" placeholder="貼上 Google Map 分享連結" value="${ex ? escapeHtml(ex.mapUrl||'') : ''}"></div>
         <div class="field" id="c-more-box"><div id="c-more-rows"></div><button type="button" class="ghost-btn" id="c-more-add">＋ 加另一間分店（未決定去邊間）</button></div>
-        <div class="field"><label>Instagram 連結（可留空）</label><input type="text" id="c-ig" placeholder="貼上 IG 連結或 @帳號" value="${ex ? escapeHtml(ex.igUrl||'') : ''}"></div>
+        <div class="field"><label>Instagram 連結（可留空）</label><input type="text" id="c-ig" placeholder="貼上 IG 連結或 @帳號" value="${ex ? escapeHtml(ex.igUrl||'') : ''}"><div id="c-ig-btn">${igBtnHtml(normIg(ex ? (ex.igUrl||'') : ''))}</div></div>
         ${labelFieldsHtml(ex ? ex.tag : '', ex ? ex.color : '')}
         <div class="field"><label>相片（最多 4 張，加入行程時會一齊帶過去）</label><div class="photo-row" id="c-photo-row"></div><input type="file" id="c-photo-input" accept="image/*" multiple style="display:none;"></div>
         <div class="field">
@@ -4461,6 +4462,7 @@ function openCandidateModal(existing){
   overlay.addEventListener('mousedown', (e)=>{ if(e.target===overlay) close(); });
   const lab = wireLabelFields(overlay, ex ? (ex.tag||'') : '', ex ? (ex.color||'') : '');
   wireNoteLinks(overlay, '#c-notes');
+  { const igIn = overlay.querySelector('#c-ig'), igBox = overlay.querySelector('#c-ig-btn'); if(igIn && igBox) igIn.addEventListener('input', ()=>{ igBox.innerHTML = igBtnHtml(normIg(igIn.value)); }); }
   let more = ((ex && ex.more) || []).map(m=> Object.assign({}, m));
   const moreRows = overlay.querySelector('#c-more-rows');
   function renderMore(){
