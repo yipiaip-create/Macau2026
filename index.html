@@ -301,6 +301,15 @@
   .map-pin{width:26px; height:26px; border-radius:50%; border:2px solid #40311F; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px; color:#fff; box-shadow:0 1px 3px rgba(0,0,0,.45); font-family:inherit;}
   .map-pin.approx{border-style:dashed; opacity:.8;}
   .map-pin.group{background:#5B86A8;} .map-pin.cand{background:#D9A93A; color:#40311F;} .map-pin.personal{background:#E39A7B;}
+  .plan-bar{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:8px 0 10px;}
+  .plan-chip{border:2px solid #40311F; border-radius:14px 10px 14px 9px; padding:4px 12px; background:#fff; font-weight:800; font-size:13px; cursor:pointer; color:#40311F; user-select:none;}
+  .plan-chip input{display:none;}
+  .plan-chip.on{background:var(--pc); color:#fff;}
+  .plan-chip.on::before{content:'✓ ';}
+  .plan-hint{font-size:11px; opacity:.65;}
+  .plan-a{box-shadow:inset 6px 0 0 #E4572E !important;}
+  .plan-b{box-shadow:inset 6px 0 0 #2E86AB !important;}
+  .map-pin.pl1{border-radius:6px;} .map-pin.pl2{border-radius:50% 50% 50% 0;}
   .map-list{margin-top:10px; font-size:13px; line-height:1.6;}
   .map-list .ml-row{display:flex; gap:8px; align-items:baseline; padding:4px 2px; border-bottom:1px dashed rgba(64,49,31,.25);}
   .map-list .ml-row a{color:inherit;}
@@ -1036,7 +1045,7 @@ const AVATAR_PRESETS = [];
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwMLtoa6qB6ceShjSu7NJQuMVKF2icCltrFGBQkbKv2isdeG_CnxhRrrFgfqQklEa4Z0Q/exec';   // 貼上 Apps Script 部署後嘅網址（https://script.google.com/macros/s/.../exec）
 
 let DB = false, lastVer = null;
-const sh = { docs:new Map(), trip:null, g:[], c:[], pub:{}, mem:[], st:[], sti:{}, av:{}, ren:{}, b:[], x:[], ready:false, v:0 };
+const sh = { docs:new Map(), trip:null, g:[], c:[], pl:[], pub:{}, mem:[], st:[], sti:{}, av:{}, ren:{}, b:[], x:[], ready:false, v:0 };
 const known = {};
 const itemCache = new Map();
 let _warnAt = 0;
@@ -1069,7 +1078,7 @@ let _q = Promise.resolve();
 function enqueue(fn){ const p = _q.then(fn, fn); _q = p.catch(()=>{}); return p; }
 
 function rebuild(docs, trip){
-  const bk = [], xp = [], g = [], c = [], pubs = {}, mem = [], st = [], sti = {}, avs = {}, ren = {};
+  const bk = [], xp = [], g = [], c = [], pl = [], pubs = {}, mem = [], st = [], sti = {}, avs = {}, ren = {};
   docs.forEach((x, id)=>{
     if(!x || !x.j) return;
     let obj;
@@ -1079,6 +1088,7 @@ function rebuild(docs, trip){
     const rec = { o: x.o||0, obj };
     if(id.startsWith('g_')) g.push(rec);
     else if(id.startsWith('c_')) c.push(rec);
+    else if(id.startsWith('pl_')) pl.push(rec);
     else if(id.startsWith('b_')) bk.push(rec);
     else if(id.startsWith('x_')) xp.push(rec);
     else if(id.startsWith('p_')) (pubs[x.name] = pubs[x.name] || []).push(rec);
@@ -1089,7 +1099,7 @@ function rebuild(docs, trip){
     else if(id.startsWith('r_')){ if(obj && obj.from && obj.to) ren[obj.from] = obj.to; }
   });
   const srt = a => a.sort((p,q)=>p.o-q.o).map(r=>r.obj);
-  sh.docs = docs; sh.trip = trip; sh.g = srt(g); sh.c = srt(c);
+  sh.docs = docs; sh.trip = trip; sh.g = srt(g); sh.c = srt(c); sh.pl = srt(pl);
   sh.pub = {}; Object.keys(pubs).forEach(n=>{ sh.pub[n] = srt(pubs[n]); });
   sh.b = srt(bk); sh.x = srt(xp); sh.mem = mem; sh.st = st; sh.sti = sti; sh.av = avs; sh.ren = ren;
   sh.ready = true; sh.v++;
@@ -1203,7 +1213,7 @@ document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && DB &&
 async function revertFromServer(){
   try{
     await refreshShared(true);
-    groupItems = (await sget('group-items', true)) || [];
+    groupItems = (await sget('group-items', true)) || []; plans = (await sget('plans', true)) || [];
     candidates = (await sget('candidates', true)) || [];
   bookings = (await sget('bookings', true)) || [];
   expenses = (await sget('expenses', true)) || [];
@@ -1260,6 +1270,7 @@ async function sget(key, shared){
   if(key==='group-items'){ known.g = new Set(Array.from(sh.docs.keys()).filter(i=>i.startsWith('g_'))); return clone(sh.g); }
   if(key==='expenses'){ known.x = new Set(Array.from(sh.docs.keys()).filter(i=>i.startsWith('x_'))); return clone(sh.x); }
   if(key==='bookings'){ known.b = new Set(Array.from(sh.docs.keys()).filter(i=>i.startsWith('b_'))); return clone(sh.b); }
+  if(key==='plans'){ known.pl = new Set(Array.from(sh.docs.keys()).filter(i=>i.startsWith('pl_'))); return clone(sh.pl); }
   if(key==='candidates'){ known.c = new Set(Array.from(sh.docs.keys()).filter(i=>i.startsWith('c_'))); return clone(sh.c); }
   if(key.startsWith('public-personal:')){ const n = key.slice(16); return sh.pub[n] ? clone(sh.pub[n]) : null; }
   return null;
@@ -1323,6 +1334,7 @@ async function sset(key, value, shared){
       return true;
     }
     if(key==='group-items') return await syncArr('g_','g',value,{},false);
+    if(key==='plans') return await syncArr('pl_','pl',value,{},false);
     if(key==='candidates') return await syncArr('c_','c',value,{},false);
     if(key==='bookings') return await syncArr('b_','b',value,{},false);
     if(key==='expenses') return await syncArr('x_','x',value,{},false);
@@ -1524,6 +1536,57 @@ function pushStickers(){
 let myName = null;
 let trip = null; // {title, startDate, days}
 let groupItems = [];
+let plans = [], planSel = lsGet('my-plans') || [], addPlanTarget = null, mapPlanSel = null;
+const PLAN_COLORS = ['#E4572E','#2E86AB'];
+function planList(){ return plans.length ? plans : [{id:'p1', name:'方案 1'}]; }
+function planOf(x){ return x.plan || planList()[0].id; }
+function planName(id){ const p = planList().find(p=>p.id===id); return p ? p.name : ''; }
+function planIdx(id){ return Math.max(0, planList().findIndex(p=>p.id===id)); }
+function selPlans(){ const ids = planList().map(p=>p.id); let a = (planSel||[]).filter(i=>ids.includes(i)); if(!a.length) a = [ids[0]]; return a.slice(0,2); }
+function mapPlans(){ const ids = planList().map(p=>p.id); const a = (mapPlanSel||[]).filter(i=>ids.includes(i)); return a.length ? a : selPlans(); }
+function gVis(){ const a = selPlans(); return groupItems.filter(x=>a.includes(planOf(x))); }
+function planBarHtml(){
+  const sp = selPlans();
+  const chips = planList().map(p=>{ const k = sp.indexOf(p.id); return `<label class="plan-chip${k>=0?' on':''}" style="--pc:${PLAN_COLORS[k>=0?k:0]}"><input type="checkbox" data-plan="${p.id}" ${k>=0?'checked':''}>${escapeHtml(p.name)}</label>`; }).join('');
+  return `<div class="plan-bar">${chips}<button class="ghost-btn" id="plan-add">＋方案</button><button class="ghost-btn" id="plan-ren" title="改名">✎</button><button class="ghost-btn" id="plan-del" title="刪除方案">🗑</button><span class="plan-hint">${sp.length>1?'對比中（最多剔 2 個）':'剔兩個方案可以並排對比'}</span></div>`;
+}
+function bindPlanBar(){
+  document.querySelectorAll('input[data-plan]').forEach(cb=> cb.addEventListener('change', ()=>{
+    let a = selPlans().slice(); const id = cb.dataset.plan;
+    if(cb.checked){ a.push(id); if(a.length>2) a.shift(); } else { a = a.filter(x=>x!==id); if(!a.length) a = [id]; }
+    planSel = a; lsSet('my-plans', a); renderApp();
+  }));
+  const b = (id, fn)=>{ const e = document.getElementById(id); if(e) e.onclick = fn; };
+  b('plan-add', addPlan); b('plan-ren', renamePlan); b('plan-del', delPlan);
+}
+async function addPlan(){
+  const name = (prompt('新方案名稱：', '方案 ' + (planList().length+1)) || '').trim(); if(!name) return;
+  const base = selPlans()[0];
+  const copy = confirm('由「' + planName(base) + '」複製所有行程過去？\n（按取消 = 空白方案）');
+  const np = { id: 'p' + uid(), name };
+  plans = planList().slice().concat([np]);
+  await sset('plans', plans, true);
+  if(copy){
+    groupItems.filter(x=>planOf(x)===base).forEach(x=>{ const c = clone(x); c.id = uid(); c.plan = np.id; groupItems.push(c); });
+    await sset('group-items', groupItems, true);
+  }
+  planSel = [np.id]; lsSet('my-plans', planSel); renderApp();
+}
+async function renamePlan(){
+  const id = selPlans()[0];
+  const name = (prompt('方案新名稱：', planName(id)) || '').trim(); if(!name) return;
+  plans = planList().map(p=> p.id===id ? Object.assign({}, p, {name}) : p);
+  await sset('plans', plans, true); renderApp();
+}
+async function delPlan(){
+  if(planList().length<2){ toast('至少要保留一個方案'); return; }
+  const id = selPlans()[0];
+  if(!confirm('確定刪除「' + planName(id) + '」？呢個方案入面所有小隊行程都會一齊刪走。')) return;
+  groupItems = groupItems.filter(x=>planOf(x)!==id);
+  plans = planList().filter(p=>p.id!==id);
+  await sset('group-items', groupItems, true); await sset('plans', plans, true);
+  planSel = []; lsSet('my-plans', []); renderApp();
+}
 let personalItems = [];
 let candidates = [];
 let bookings = [];
@@ -1788,7 +1851,7 @@ async function init(){
   }
   myName = await sget('my-name', false);
   trip = await sget('trip-config', true);
-  groupItems = (await sget('group-items', true)) || [];
+  groupItems = (await sget('group-items', true)) || []; plans = (await sget('plans', true)) || [];
   personalItems = (await sget('personal-items', false)) || [];
   candidates = (await sget('candidates', true)) || [];
   bookings = (await sget('bookings', true)) || [];
@@ -1871,6 +1934,8 @@ function startPolling(){
     if(stSig!==lastStSig){ lastStSig = stSig; if(scope==='group') dirty = true; }
     const freshGroup = await sget('group-items', true);
     if(freshGroup && JSON.stringify(freshGroup) !== JSON.stringify(groupItems)){ groupItems = freshGroup; dirty = true; }
+    const freshPl = await sget('plans', true);
+    if(freshPl && JSON.stringify(freshPl) !== JSON.stringify(plans)){ plans = freshPl; dirty = true; }
     const freshBk = await sget('bookings', true);
     if(freshBk && JSON.stringify(freshBk) !== JSON.stringify(bookings)){ bookings = freshBk; if(scope==='bookings') dirty = true; }
     const freshX = await sget('expenses', true);
@@ -2003,6 +2068,7 @@ function renderApp(){
       </div>
       
 
+      ${scope==='group' ? planBarHtml() : ''}
       <div id="scope-content"></div>
     </div>
   `;
@@ -2011,6 +2077,7 @@ function renderApp(){
     b.onclick = ()=>{ scope = b.dataset.scope; renderApp(); };
   });
   renderMemberBar();
+  bindPlanBar();
   document.getElementById('back-cover').onclick = ()=>{ showCover = true; renderApp(); };
   const lb = document.getElementById('layout-btn');
   if(lb) lb.onclick = async ()=>{ layout = layout==='cols' ? 'rows' : 'cols'; await sset('my-layout', layout, false); renderApp(); };
@@ -2022,7 +2089,7 @@ function renderApp(){
   const phEl = document.querySelector('.ph-paper');
   if(phEl) phEl.style.clipPath = deckleClip();
   document.getElementById('refresh-btn').onclick = async ()=>{
-    groupItems = (await sget('group-items', true)) || [];
+    groupItems = (await sget('group-items', true)) || []; plans = (await sget('plans', true)) || [];
     personalItems = (await sget('personal-items', false)) || [];
     candidates = (await sget('candidates', true)) || [];
   bookings = (await sget('bookings', true)) || [];
@@ -2050,7 +2117,7 @@ function renderApp(){
     }catch(err){ toast('讀唔到呢張相，試下另一張'); }
   });
   const addItemBtn = document.getElementById('add-item-btn');
-  if(addItemBtn) addItemBtn.onclick = ()=> openItemModal(null, {forceScope: scope==='group'?'group':'personal'});
+  if(addItemBtn) addItemBtn.onclick = ()=>{ addPlanTarget = null; if(scope==='group'){ const sp = selPlans(); if(sp.length>1) addPlanTarget = confirm('加去「' + planName(sp[0]) + '」？\n（按取消 = 加去「' + planName(sp[1]) + '」）') ? sp[0] : sp[1]; } openItemModal(null, {forceScope: scope==='group'?'group':'personal'}); };
   const addCandBtn = document.getElementById('add-candidate-btn');
   if(addCandBtn) addCandBtn.onclick = ()=> openCandidateModal(null);
 
@@ -2101,18 +2168,19 @@ function buildDayItems(mode, dateStr){
     personalItems.filter(x=>x.date===dateStr).forEach(it=>{
       pushPersonal(it, {editable:true, leftPct:2, widthPct: 50});
     });
-    groupItems.filter(x=>x.date===dateStr && (x.participants||[]).includes(myName)).forEach(it=>{
+    gVis().filter(x=>x.date===dateStr && (x.participants||[]).includes(myName)).forEach(it=>{
       pushGroup(it, {editable:false, showJoin:true, leftPct:54, widthPct:44, ownerTag:'已參加', ownerSmall:true, showWho:false});
     });
   }
   else if(mode==='group'){
-    const gToday = groupItems.filter(x=>x.date===dateStr);
+    const sp = selPlans(), two = sp.length>1; const PL = two?66:(R?52:58), PW = two?33:(R?46:40);
+    const gAll = gVis().filter(x=>x.date===dateStr); const gToday = gAll.filter(x=>planOf(x)===sp[0]);
     const pToday = personalItems.filter(x=>x.date===dateStr);
-    gToday.forEach(it=>{
-      pushGroup(it, {editable:true, showJoin:true, leftPct:2, widthPct:R?46:54, conflict: pToday.some(p=>overlaps(p,it))});
+    gAll.forEach(it=>{ const k = sp.indexOf(planOf(it));
+      pushGroup(it, {editable:true, showJoin:true, leftPct: two ? 1+k*32 : 2, widthPct: two ? 31 : (R?46:54), conflict: pToday.some(p=>overlaps(p,it)), colorClass: two ? 'group plan-'+(k?'b':'a') : 'group', ownerTag: two ? (it.owner||'')+' · '+planName(planOf(it)) : it.owner});
     });
     pToday.forEach(it=>{
-      pushPersonal(it, {editable:true, leftPct:R?52:58, widthPct:R?46:40, ownerTag:'你的個人行程', conflict: gToday.some(g=>overlaps(g,it))});
+      pushPersonal(it, {editable:true, leftPct:PL, widthPct:PW, ownerTag:'你的個人行程', conflict: gToday.some(g=>overlaps(g,it))});
     });
     Object.keys(publicOthers).filter(n=>n!==myName).forEach(name=>{
       (publicOthers[name]||[]).filter(x=>x.date===dateStr).forEach(it=>{
@@ -2120,7 +2188,7 @@ function buildDayItems(mode, dateStr){
         const label = (name===myName? '你' : name)+'的個人行程';
         const shown = isHalf ? Object.assign({}, it, {title:'（忙緊）', location:'', notes:'', photos:[], tag:'', color:''}) : it;
         pushPersonal(shown, {
-          editable:false, leftPct:R?52:58, widthPct:R?46:40, ownerName:name,
+          editable:false, leftPct:PL, widthPct:PW, ownerName:name,
           ownerTag: label,
           colorClass: isHalf ? 'other half' : 'other'
         });
@@ -2129,7 +2197,7 @@ function buildDayItems(mode, dateStr){
   }
   else if(mode==='compare'){
     const mine = personalItems.filter(x=>x.date===dateStr).map(it=>({it}));
-    const team = groupItems.filter(x=>x.date===dateStr).map(it=>({it}));
+    const team = groupItems.filter(x=>x.date===dateStr && planOf(x)===selPlans()[0]).map(it=>({it}));
     mine.forEach(m=>{
       team.forEach(t=>{
         if(overlaps(m.it, t.it)){ m.conflict = true; t.conflict = true; }
@@ -3327,7 +3395,7 @@ function mapPoints(){
   const pts = [];
   const mk = (kind, it, title, pid)=>{
     const hasPlace = (it.address||'').trim() || (it.mapUrl||'').trim();
-    pts.push({ kind, id: pid || it.id, title, date:it.date, time:it.time, location:it.location, address:it.address, mapUrl:it.mapUrl,
+    pts.push({ kind, plan: kind==='group' ? planOf(it) : undefined, id: pid || it.id, title, date:it.date, time:it.time, location:it.location, address:it.address, mapUrl:it.mapUrl,
                people: kind==='group' ? (it.participants||[]).length : 0, hasPlace: !!hasPlace,
                lat: (it.geoKey===geoKeyOf(it) && typeof it.lat==='number') ? it.lat : null,
                lng: (it.geoKey===geoKeyOf(it) && typeof it.lng==='number') ? it.lng : null,
@@ -3335,7 +3403,7 @@ function mapPoints(){
                retryLink: !!cleanMapUrl(it.mapUrl) && !(it.geoKey===geoKeyOf(it) && it.geoSrc==='link'),
                tried: false });
   };
-  if(mapFilter.group) groupItems.filter(it=> it.type!=='transit' && !mapDaysOff.has(dayIndexOf(it.date))).forEach(it=> mk('group', it, it.title));
+  if(mapFilter.group) groupItems.filter(it=> mapPlans().includes(planOf(it)) && it.type!=='transit' && !mapDaysOff.has(dayIndexOf(it.date))).forEach(it=> mk('group', it, it.title));
   if(mapFilter.cand) candidates.forEach(c=>{
     const nb = (c.more||[]).length;
     mk('cand', c, nb ? c.name + '（分店 1）' : c.name);
@@ -3443,6 +3511,7 @@ async function renderMapPanel(){
   mount.innerHTML = `
     <div class="bk-sum map-filter">
       <label><input type="checkbox" data-f="group" ${f.group?'checked':''}> ⚑ 小隊行程（按日分色）</label>
+      ${planList().length>1 ? planList().map((p,i)=>`<label class="map-plan-opt"><input type="checkbox" data-pl="${p.id}" ${mapPlans().includes(p.id)?'checked':''}> ${['●','■','◆'][i%3]} ${escapeHtml(p.name)}</label>`).join('') : ''}
       <label><input type="checkbox" data-f="cand" ${f.cand?'checked':''}> 🟡 候選地點</label>
       <label><input type="checkbox" data-f="personal" ${f.personal?'checked':''}> 🟠 我嘅個人行程</label>
       <label><input type="checkbox" data-f="book" ${f.book?'checked':''}> 🟣 預訂（酒店／車站／碼頭）</label>
@@ -3452,6 +3521,7 @@ async function renderMapPanel(){
     <div id="map-list" class="map-list"></div>`;
   mount.querySelectorAll('input[data-day]').forEach(cb=> cb.addEventListener('change', ()=>{ const i = +cb.dataset.day; if(cb.checked) mapDaysOff.delete(i); else mapDaysOff.add(i); renderMapPanel(); }));
   mount.querySelectorAll('input[data-f]').forEach(cb=> cb.addEventListener('change', ()=>{ mapFilter[cb.dataset.f] = cb.checked; renderMapPanel(); }));
+  mount.querySelectorAll('input[data-pl]').forEach(cb=> cb.addEventListener('change', ()=>{ let a = mapPlans().slice(); const id = cb.dataset.pl; if(cb.checked){ if(!a.includes(id)) a.push(id); } else a = a.filter(x=>x!==id); if(!a.length) a = [id]; mapPlanSel = a; renderMapPanel(); }));
   const box = document.getElementById('map-box');
   const listEl = document.getElementById('map-list');
   let pts = mapPoints();
@@ -3497,9 +3567,9 @@ async function renderMapPanel(){
       const label = p.kind==='group' ? num.get(p.id) : (p.kind==='cand' ? '💡' : (p.kind==='book' ? p.pinLabel : '我'));
       const icon = p.kind==='book'
         ? L.divIcon({ className:'', html:`<div class="map-pin book${p.geoApprox?' approx':''}">${label}</div>`, iconSize:[44,26], iconAnchor:[22-dx,13], popupAnchor:[dx,-12] })
-        : L.divIcon({ className:'', html:`<div class="map-pin ${p.kind}${p.geoApprox?' approx':''}" ${p.kind==='group' ? `style="background:${dayColorOf(p.date)};color:${readableOn(dayColorOf(p.date))};"` : ''}>${label}</div>`, iconSize:[26,26], iconAnchor:[13-dx,13], popupAnchor:[dx,-12] });
+        : L.divIcon({ className:'', html:`<div class="map-pin ${p.kind}${p.geoApprox?' approx':''}${(p.kind==='group'&&planList().length>1)?' pl'+(planIdx(p.plan)%3):''}" ${p.kind==='group' ? `style="background:${dayColorOf(p.date)};color:${readableOn(dayColorOf(p.date))};"` : ''}>${label}</div>`, iconSize:[26,26], iconAnchor:[13-dx,13], popupAnchor:[dx,-12] });
       const link = mapLinkAny(p);
-      const pop = `<b>${escapeHtml(p.title||'')}</b>` +
+      const pop = `<b>${escapeHtml(p.title||'')}</b>` + ((p.kind==='group'&&planList().length>1) ? `<br><small>${escapeHtml(planName(p.plan))}</small>` : '') +
         (p.kind==='group' && dayIndexOf(p.date)>=0 ? `<br><span style="color:${dayColorOf(p.date)};font-weight:700;">Day ${dayIndexOf(p.date)+1}</span>` : '') +
         (p.date ? `<br>📅 ${escapeHtml(bkMD(p.date))}${p.time?' '+escapeHtml(p.time):''}` : '') +
         ((p.address||p.location) ? `<br>📍 ${escapeHtml(p.address||p.location)}` : '') +
@@ -4124,6 +4194,7 @@ function openItemModal(existing, opts){
       color: lab.color(),
       fromBooking: it.fromBooking || undefined,
       owner: it.owner || myName,
+      plan: currentScope==='group' ? (it.plan || (editing ? planOf(it) : (addPlanTarget || selPlans()[0]))) : undefined,
       participants: (function(){ let ps = ((it.participants||[]).length || (editing && modalScope===currentScope)) ? (it.participants||[]).slice() : (currentScope==='group' ? [myName] : []); const ow = it.owner || myName; if(currentScope==='group' && !ps.includes(ow)) ps.unshift(ow); return ps; })(),
       visibility: currentScope==='personal'
         ? (overlay.querySelector('input[name="f-visibility"]:checked')||{}).value || 'private'
@@ -5090,7 +5161,7 @@ async function renameMe(newName){
   const old = myName;
   if(!newName || newName===old) return false;
   const swap = (arr)=> (arr||[]).map(p=> p===old ? newName : p);
-  groupItems = (await sget('group-items', true)) || [];
+  groupItems = (await sget('group-items', true)) || []; plans = (await sget('plans', true)) || [];
   candidates = (await sget('candidates', true)) || [];
   bookings = (await sget('bookings', true)) || [];
   expenses = (await sget('expenses', true)) || [];
