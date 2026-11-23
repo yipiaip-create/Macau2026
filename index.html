@@ -445,7 +445,20 @@
   .visibility-radio label.on{border-color:var(--ink); background:var(--paper-2);}
   .visibility-radio label.on:has(input[value="public"]){background:var(--peach);}
   .visibility-radio label.on:has(input[value="half"]){background:var(--mint);}
-  .photo-row{display:flex; gap:8px; flex-wrap:wrap;}
+  .photo-row{display:grid; grid-template-columns:repeat(2,1fr); gap:10px;}
+  .photo-row .photo-thumb, .photo-row .add-photo-btn{width:100%; height:auto; aspect-ratio:1/1;}
+  .photo-row .photo-thumb .rm{width:24px; height:24px; line-height:24px; font-size:13px;}
+  .photo-row .photo-thumb .edit-photo{width:26px; height:26px; line-height:26px; font-size:13px;}
+  .photo-thumb img{cursor:zoom-in;}
+  .cand-photos{float:right; display:grid; grid-template-columns:repeat(var(--n,1), 88px); gap:6px; margin:0 0 8px 12px;}
+  .cand-photos .photo-thumb{width:88px; height:88px;}
+  .candidate-card .candidate-actions{clear:both;}
+  @media (max-width:340px){
+    .candidate-card{display:flex; flex-direction:column;}
+    .candidate-card > *{order:0;}
+    .candidate-card .cand-photos{float:none; order:1; margin:8px 0; grid-template-columns:repeat(var(--n,1), 88px);}
+    .candidate-card .candidate-actions{order:2;}
+  }
   .photo-thumb{position:relative; width:60px; height:60px; border-radius:12px; overflow:hidden; border:1.8px solid var(--ink);}
   .photo-thumb img{width:100%; height:100%; object-fit:cover;}
   .photo-thumb .rm{position:absolute; top:2px; right:2px; width:16px; height:16px; border-radius:50%; background:rgba(0,0,0,.6);
@@ -1550,6 +1563,8 @@ function candPlans(cid){ return Array.from(new Set(groupItems.filter(x=>x.fromCa
 function candHidden(c, ids){ const p = candPlans(c.id); return p.length>0 && ids.every(i=>p.includes(i)); }
 function candPool(){ const a = selPlans(); return candidates.filter(c=>!candHidden(c, a)); }
 function candBadge(c){ const a = selPlans(); const o = candPlans(c.id).filter(i=>!a.includes(i)); return (o.length && planList().length>1) ? ` <small class="cand-used">已入：${o.map(planName).map(escapeHtml).join('、')}</small>` : ''; }
+function showPhoto(src){ const d = document.createElement('div'); d.className = 'lightbox'; d.innerHTML = '<img src="' + src + '">'; d.onclick = ()=> d.remove(); document.body.appendChild(d); }
+document.addEventListener('click', e=>{ const im = e.target.closest && e.target.closest('.photo-thumb img'); if(im) showPhoto(im.src); });
 function planBarHtml(){
   const sp = selPlans();
   const chips = planList().map(p=>{ const k = sp.indexOf(p.id); return `<label class="plan-chip${k>=0?' on':''}" style="--pc:${PLAN_COLORS[k>=0?k:0]}"><input type="checkbox" data-plan="${p.id}" ${k>=0?'checked':''}>${escapeHtml(p.name)}</label>`; }).join('');
@@ -3917,7 +3932,7 @@ function openViewModal(cfg){
         ${cfg.groupId ? joinBlockHtml(cfg.groupId) : ''}
         <div style="font-family:var(--font-display);font-weight:700;">${cfg.time} · ${cfg.duration}分鐘</div>
         ${cfg.location ? `<div style="font-size:13px;color:var(--ink-soft);">📍 ${escapeHtml(cfg.location)}</div>` : ''}
-        ${mapBlockHtml({ address:cfg.address, mapUrl:cfg.mapUrl, location:cfg.location, title:cfg.title, lat:cfg.lat, lng:cfg.lng, geoKey:cfg.geoKey, geoSrc:cfg.geoSrc }, true)}
+        ${mapBlockHtml({ address:cfg.address, mapUrl:cfg.mapUrl, location:cfg.location, title:cfg.title, lat:cfg.lat, lng:cfg.lng, geoKey:cfg.geoKey, geoSrc:cfg.geoSrc }, false)}
         ${cfg.type==='transit' ? transitViewHtml(cfg) : ''}
         ${igBtnHtml(cfg.igUrl)}
         ${cfg.tag ? `<div class="item-tag" style="position:static;display:inline-block;${cfg.color?('background:'+cfg.color+';color:#fff;'):''}">${escapeHtml(cfg.tag)}</div>` : ''}
@@ -3952,7 +3967,7 @@ function openItemModal(existing, opts){
     address: prefillCand? (prefillCand.address||'') : (prefillBk ? bkItemPlace(prefillBk).address : ''),
     mapUrl: prefillCand? (prefillCand.mapUrl||'') : (prefillBk ? bkItemPlace(prefillBk).mapUrl : ''),
     notes: prefillCand? (prefillCand.notes||'') : (prefillBk ? bkItemNotes(prefillBk) : ''),
-    photos: [], owner: myName,
+    photos: prefillCand ? (prefillCand.photos||[]).slice() : [], owner: myName,
     participants: (prefillCand && modalScope==='group') ? candJoiners(prefillCand) : ((prefillBk && modalScope==='group') ? (Array.isArray(prefillBk.members) && prefillBk.members.length ? prefillBk.members.slice() : [myName]) : []),
     visibility:'private', tag: prefillCand ? (prefillCand.tag||'') : (prefillBk ? bkType(prefillBk.type).label : ''), color: prefillCand ? (prefillCand.color||'') : '', igUrl: prefillCand ? (prefillCand.igUrl||'') : '',
     fromBooking: prefillBk ? prefillBk.id : undefined
@@ -4020,7 +4035,7 @@ function openItemModal(existing, opts){
         <div class="field">
           <label>Google Map 連結（可留空）</label>
           <input type="url" id="f-mapurl" placeholder="貼上 Google Map 分享連結" value="${escapeHtml(it.mapUrl||'')}">
-          ${editing ? mapBlockHtml(it, true) : ''}
+          ${editing ? mapBlockHtml(it, false) : ''}
         </div>
         <div class="field">
           <label>Instagram 連結（可留空）</label>
@@ -4330,6 +4345,7 @@ function renderCandidatesPanel(){
     const mlink = mapLink(c);
     return `
       <div class="candidate-card" data-cid="${c.id}">
+        ${(c.photos||[]).length ? `<div class="cand-photos">${c.photos.map(p=>`<div class="photo-thumb"><img src="${p}"></div>`).join('')}</div>` : ''}
         <div class="candidate-top">
           <div>
             <div class="candidate-name">${escapeHtml(c.name)}</div>
@@ -4423,6 +4439,7 @@ function openCandidateModal(existing){
         <div class="field" id="c-more-box"><div id="c-more-rows"></div><button type="button" class="ghost-btn" id="c-more-add">＋ 加另一間分店（未決定去邊間）</button></div>
         <div class="field"><label>Instagram 連結（可留空）</label><input type="text" id="c-ig" placeholder="貼上 IG 連結或 @帳號" value="${ex ? escapeHtml(ex.igUrl||'') : ''}"></div>
         ${labelFieldsHtml(ex ? ex.tag : '', ex ? ex.color : '')}
+        <div class="field"><label>相片（最多 4 張，加入行程時會一齊帶過去）</label><div class="photo-row" id="c-photo-row"></div><input type="file" id="c-photo-input" accept="image/*" multiple style="display:none;"></div>
         <div class="field">
           <label>優先度（淨係發起人揀，其他人只需要㩒「加入」）</label>
           ${canSetPri ? `<div class="priority-radio">
@@ -4463,6 +4480,19 @@ function openCandidateModal(existing){
   }
   overlay.querySelector('#c-more-add').onclick = ()=>{ more.push({ id: uid(), address:'', mapUrl:'' }); renderMore(); const last = moreRows.querySelector('.br-row:last-child .br-addr'); if(last) last.focus(); };
   renderMore();
+  let cphotos = [...((ex && ex.photos) || [])];
+  const cRow = overlay.querySelector('#c-photo-row'), cIn = overlay.querySelector('#c-photo-input');
+  function renderCPhotos(){
+    cRow.innerHTML = cphotos.map((p,i)=>`<div class="photo-thumb"><img src="${p}"><button type="button" class="edit-photo" data-i="${i}">✎</button><button type="button" class="rm" data-i="${i}">✕</button></div>`).join('') + (cphotos.length<4 ? `<button type="button" class="add-photo-btn" id="c-add-photo">＋</button>` : '');
+    cRow.querySelectorAll('.rm').forEach(b=> b.onclick = ()=>{ cphotos.splice(+b.dataset.i,1); renderCPhotos(); });
+    cRow.querySelectorAll('.edit-photo').forEach(b=> b.onclick = ()=>{ const i = +b.dataset.i; openCropModal(cphotos[i], (cr)=>{ cphotos[i] = cr; renderCPhotos(); }); });
+    const ab = cRow.querySelector('#c-add-photo'); if(ab) ab.onclick = ()=> cIn.click();
+  }
+  renderCPhotos();
+  cIn.addEventListener('change', async (e)=>{
+    const files = Array.from(e.target.files).slice(0, 4-cphotos.length); e.target.value = '';
+    for(const f of files){ try{ const raw = await fileToDataUrlResized(f, 1000); await new Promise(res=>{ openCropModal(raw, (cr)=>{ cphotos.push(cr); renderCPhotos(); res(); }); }); }catch(err){} }
+  });
   const delBtn = overlay.querySelector('#c-del');
   if(delBtn) delBtn.onclick = async ()=>{ if(await deleteCandidate(ex.id)){ close(); renderApp(); } };
   overlay.querySelector('#c-save').onclick = async ()=>{
@@ -4479,9 +4509,9 @@ function openCandidateModal(existing){
     await lab.persist();
     if(ex){
       const c = candidates.find(x=> x.id===ex.id);
-      if(c){ c.name = name; c.location = loc; c.address = address; c.mapUrl = mapUrl; c.igUrl = igUrl; c.more = moreOut.length ? moreOut : undefined; c.tag = lab.tag(); c.color = lab.color(); c.notes = notes; if(pri) c.pri = pri; }
+      if(c){ c.name = name; c.location = loc; c.address = address; c.mapUrl = mapUrl; c.igUrl = igUrl; c.more = moreOut.length ? moreOut : undefined; c.tag = lab.tag(); c.color = lab.color(); c.notes = notes; c.photos = cphotos.length ? cphotos : undefined; if(pri) c.pri = pri; }
     } else {
-      candidates.push({ id: uid(), name, location: loc, address, mapUrl, igUrl, more: moreOut.length ? moreOut : undefined, tag: lab.tag(), color: lab.color(), notes, proposedBy: myName, pri: pri||'must', joined: [], addedAt: Date.now() });
+      candidates.push({ id: uid(), name, location: loc, address, mapUrl, igUrl, more: moreOut.length ? moreOut : undefined, tag: lab.tag(), color: lab.color(), notes, photos: cphotos.length ? cphotos : undefined, proposedBy: myName, pri: pri||'must', joined: [], addedAt: Date.now() });
     }
     await sset('candidates', candidates, true);
     close();
