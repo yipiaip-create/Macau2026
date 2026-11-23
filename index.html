@@ -154,6 +154,7 @@
   .tabs button[data-scope="compare"] .tag-dot{background:var(--pink-deep);}
   .tabs button[data-scope="candidates"] .tag-dot{background:var(--mint-deep);}
   .tabs button[data-scope="map"] .tag-dot{background:var(--gold);}
+  .tabs button[data-scope="expenses"] .tag-dot{background:var(--pink-deep);}
 
   .spacer{flex:1;}
   .ghost-btn{
@@ -989,6 +990,32 @@
   .bkc-places{display:flex; flex-direction:column; gap:2px; margin-top:5px;}
   .bkc-pl{font-size:11px; color:var(--blue-deep); font-weight:700; text-decoration:none; line-height:1.35; overflow-wrap:anywhere;}
   a.bkc-pl:hover{text-decoration:underline;}
+
+  /* 離線／同步狀態 */
+  #sync-badge{position:fixed; left:12px; bottom:calc(12px + env(safe-area-inset-bottom,0px)); z-index:9500; padding:7px 13px; border-radius:999px; font-size:12.5px; font-weight:700; border:2px solid var(--ink); box-shadow:var(--shadow); cursor:pointer; max-width:calc(100vw - 24px);}
+  #sync-badge.off{background:#FFE9C7; color:var(--ink);}
+  #sync-badge.syncing{background:#E3F2EA; color:var(--ink);}
+
+  /* 支出表 */
+  .xp-wrap{max-width:760px; margin:0 auto; padding:4px 2px 80px; display:flex; flex-direction:column; gap:12px;}
+  .xp-card{background:#fff; border:2px solid var(--ink); border-radius:16px; box-shadow:var(--shadow); padding:12px 14px; display:flex; flex-direction:column; gap:10px;}
+  .xp-total{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;}
+  .xp-total b{font-family:var(--font-display); font-size:26px;}
+  .xp-n{color:var(--ink-soft); font-size:12px;}
+  .xp-h{font-family:var(--font-display); font-weight:800; font-size:14px;}
+  .xp-table{display:flex; flex-direction:column; gap:2px; font-size:12.5px;}
+  .xp-tr{display:grid; grid-template-columns:minmax(0,1.5fr) 1fr 1fr 1fr; gap:6px; align-items:center; padding:4px 0; border-top:1px dashed var(--line);}
+  .xp-th{border-top:0; color:var(--ink-soft); font-size:11.5px; font-weight:700;}
+  .xp-tr span:not(.xp-who){text-align:right; font-variant-numeric:tabular-nums;}
+  .xp-who{display:inline-flex; align-items:center; gap:5px; min-width:0; font-weight:700;}
+  .xp-pos{color:#2E7D5B; font-weight:800;} .xp-neg{color:#C2563C; font-weight:800;}
+  .xp-pay{display:flex; align-items:center; justify-content:space-between; gap:6px; flex-wrap:wrap; padding:6px 0; border-top:1px dashed var(--line); font-size:13px;}
+  .xp-arrow{font-weight:800; font-variant-numeric:tabular-nums;}
+  .xp-empty,.xp-hint{color:var(--ink-soft); font-size:12.5px;}
+  .xp-list{display:flex; flex-direction:column; gap:8px;}
+  .xp-item{text-align:left; background:#fff; border:2px solid var(--ink); border-radius:14px; padding:9px 12px; font:inherit; color:inherit; cursor:pointer; display:flex; flex-direction:column; gap:3px;}
+  .xp-i-top{display:flex; justify-content:space-between; gap:8px; font-weight:700;}
+  .xp-i-sub{font-size:12px; color:var(--ink-soft);}
 </style>
 </head>
 <body>
@@ -1009,7 +1036,7 @@ const AVATAR_PRESETS = [];
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwMLtoa6qB6ceShjSu7NJQuMVKF2icCltrFGBQkbKv2isdeG_CnxhRrrFgfqQklEa4Z0Q/exec';   // 貼上 Apps Script 部署後嘅網址（https://script.google.com/macros/s/.../exec）
 
 let DB = false, lastVer = null;
-const sh = { docs:new Map(), trip:null, g:[], c:[], pub:{}, mem:[], st:[], sti:{}, av:{}, ren:{}, b:[], ready:false, v:0 };
+const sh = { docs:new Map(), trip:null, g:[], c:[], pub:{}, mem:[], st:[], sti:{}, av:{}, ren:{}, b:[], x:[], ready:false, v:0 };
 const known = {};
 const itemCache = new Map();
 let _warnAt = 0;
@@ -1023,11 +1050,12 @@ function clone(x){ return x==null ? x : JSON.parse(JSON.stringify(x)); }
 function hex(s){ return Array.from(new TextEncoder().encode(String(s))).map(b=>b.toString(16).padStart(2,'0')).join('').slice(0,120); }
 function safeId(s){ return String(s).replace(/[^A-Za-z0-9_\-]/g,'_'); }
 
-let lastErr = '';
+let lastErr = '', netBad = false;
 async function callScript(opts, query){
   let r, txt;
   try{ r = await fetch(SCRIPT_URL + (query||''), opts); txt = await r.text(); }
-  catch(e){ lastErr = '連唔到 Google 程式（網絡或網址錯）：' + (e && e.message || e); throw e; }
+  catch(e){ lastErr = '連唔到 Google 程式（網絡或網址錯）：' + (e && e.message || e); netBad = true; updateSyncBadge(); throw e; }
+  if(netBad){ netBad = false; updateSyncBadge(); }
   let j = null;
   try{ j = JSON.parse(txt); }catch(e){}
   if(!r.ok || j===null){
@@ -1041,7 +1069,7 @@ let _q = Promise.resolve();
 function enqueue(fn){ const p = _q.then(fn, fn); _q = p.catch(()=>{}); return p; }
 
 function rebuild(docs, trip){
-  const bk = [], g = [], c = [], pubs = {}, mem = [], st = [], sti = {}, avs = {}, ren = {};
+  const bk = [], xp = [], g = [], c = [], pubs = {}, mem = [], st = [], sti = {}, avs = {}, ren = {};
   docs.forEach((x, id)=>{
     if(!x || !x.j) return;
     let obj;
@@ -1052,6 +1080,7 @@ function rebuild(docs, trip){
     if(id.startsWith('g_')) g.push(rec);
     else if(id.startsWith('c_')) c.push(rec);
     else if(id.startsWith('b_')) bk.push(rec);
+    else if(id.startsWith('x_')) xp.push(rec);
     else if(id.startsWith('p_')) (pubs[x.name] = pubs[x.name] || []).push(rec);
     else if(id.startsWith('m_')) mem.push(obj);
     else if(id.startsWith('s_')) st.push(obj);
@@ -1062,7 +1091,7 @@ function rebuild(docs, trip){
   const srt = a => a.sort((p,q)=>p.o-q.o).map(r=>r.obj);
   sh.docs = docs; sh.trip = trip; sh.g = srt(g); sh.c = srt(c);
   sh.pub = {}; Object.keys(pubs).forEach(n=>{ sh.pub[n] = srt(pubs[n]); });
-  sh.b = srt(bk); sh.mem = mem; sh.st = st; sh.sti = sti; sh.av = avs; sh.ren = ren;
+  sh.b = srt(bk); sh.x = srt(xp); sh.mem = mem; sh.st = st; sh.sti = sti; sh.av = avs; sh.ren = ren;
   sh.ready = true; sh.v++;
 }
 
@@ -1094,6 +1123,11 @@ function applyData(data){
   Object.keys(data.docs || {}).forEach(id=>{ docs.set(id, data.docs[id]); });
   let trip = null;
   if(data.trip && data.trip.j){ try{ trip = JSON.parse(data.trip.j); }catch(e){} }
+  // 離線期間未同步嘅改動（outbox）疊返上去，咁就唔會被舊資料蓋走
+  Object.keys(_outbox).forEach(k=>{
+    if(k==='trip'){ try{ trip = JSON.parse(_outbox[k].j); }catch(e){} }
+    else if(k.indexOf('docs/')===0){ const id = k.slice(5); if(_outbox[k]===null) docs.delete(id); else docs.set(id, _outbox[k]); }
+  });
   rebuild(docs, trip);
   lastVer = data.ver || null;
 }
@@ -1110,22 +1144,61 @@ async function refreshShared(force){
   }catch(e){ console.error('refresh failed', e); if(!sh.ready) throw e; }
 }
 
-let _pend = null;
+/* ---- 離線寫入：所有改動先入本機 outbox，再背景同步；上唔到網就留低，上到網自動補返 ---- */
+let _outbox = {}, _syncing = false, _retryT = null, _retryN = 0, _offlineToasted = false;
+async function loadOutbox(){
+  const o = await idbGet('outbox:' + SCRIPT_URL);
+  _outbox = (o && o.ch && typeof o.ch==='object') ? o.ch : {};
+}
+function saveOutbox(){ return idbSet('outbox:' + SCRIPT_URL, { ch:_outbox }); }
+function pendingCount(){ return Object.keys(_outbox).length; }
 function patchDocs(changes){
-  if(!_pend){ _pend = { ch:{}, waiters:[] }; setTimeout(flushPatch, 120); }
-  Object.assign(_pend.ch, changes);
-  return new Promise((res, rej)=>{ _pend.waiters.push({ res, rej }); });
+  Object.assign(_outbox, changes);
+  saveOutbox();
+  updateSyncBadge();
+  scheduleFlush(150);
+  return Promise.resolve({ queued:true });
 }
-function flushPatch(){
-  const cur = _pend; _pend = null;
-  if(!cur) return;
-  enqueue(async ()=>{
-    const r = await callScript({ method:'POST', headers:{ 'Content-Type':'text/plain;charset=utf-8' }, body: JSON.stringify({ changes: cur.ch }) });
-    // 伺服器回報「寫之前嘅版本」；如果冇人喺中間改過，就唔使再下載一次自己嘅改動
-    if(r && r.prev !== undefined && r.prev === lastVer && r.ver) lastVer = r.ver;
-    return r;
-  }).then(r=>{ cur.waiters.forEach(w=>w.res(r)); }, e=>{ cur.waiters.forEach(w=>w.rej(e)); });
+function scheduleFlush(ms){
+  if(_retryT) clearTimeout(_retryT);
+  _retryT = setTimeout(flushOutbox, ms);
 }
+async function flushOutbox(){
+  if(_syncing) return;
+  if(!pendingCount()){ updateSyncBadge(); return; }
+  _syncing = true; updateSyncBadge();
+  const sent = Object.assign({}, _outbox);
+  let ok = false;
+  try{
+    const r = await enqueue(()=> callScript({ method:'POST', headers:{ 'Content-Type':'text/plain;charset=utf-8' }, body: JSON.stringify({ changes: sent }) }));
+    Object.keys(sent).forEach(k=>{ if(_outbox[k]===sent[k]) delete _outbox[k]; });
+    await saveOutbox();
+    ok = true; _retryN = 0; _offlineToasted = false;
+    if(r && r.prev !== undefined && r.prev === lastVer && r.ver && !pendingCount()) lastVer = r.ver;
+    else lastVer = null;          // 有其他人改過／離線期間有變 → 下一次輪詢會重新下載
+  }catch(e){
+    console.error('sync failed, kept in outbox', e);
+    if(!_offlineToasted){ _offlineToasted = true; toast('暫時同步唔到，改動已儲存喺呢部機，上到網會自動同步'); }
+  }finally{
+    _syncing = false; updateSyncBadge();
+  }
+  if(ok){ if(pendingCount()) scheduleFlush(300); else refreshShared(true).then(()=>{ try{ if(typeof afterBackgroundSync==='function') afterBackgroundSync(); }catch(e){} }).catch(()=>{}); }
+  else{ _retryN++; scheduleFlush(Math.min(30000, 3000 * _retryN)); }
+}
+function updateSyncBadge(){
+  let el = document.getElementById('sync-badge');
+  const n = pendingCount();
+  const off = netBad || (typeof navigator!=='undefined' && navigator.onLine===false);
+  if(!DB || (!off && !n)){ if(el) el.remove(); return; }
+  if(!el){ el = document.createElement('div'); el.id = 'sync-badge'; document.body.appendChild(el); el.onclick = ()=>{ if(pendingCount()) flushOutbox(); }; }
+  el.className = off ? 'off' : 'syncing';
+  el.textContent = off
+    ? (n ? '📴 離線 · ' + n + ' 項改動待同步' : '📴 離線 · 顯示上次同步嘅版本')
+    : '⟳ 同步緊 ' + n + ' 項…';
+}
+window.addEventListener('online', ()=>{ netBad = false; updateSyncBadge(); if(pendingCount()) flushOutbox(); else if(DB) refreshShared(true).catch(()=>{}); });
+window.addEventListener('offline', ()=>{ updateSyncBadge(); });
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && DB && pendingCount()) scheduleFlush(200); });
 
 async function revertFromServer(){
   try{
@@ -1133,6 +1206,7 @@ async function revertFromServer(){
     groupItems = (await sget('group-items', true)) || [];
     candidates = (await sget('candidates', true)) || [];
   bookings = (await sget('bookings', true)) || [];
+  expenses = (await sget('expenses', true)) || [];
     trip = (await sget('trip-config', true)) || trip;
     await loadPublicOthers();
     renderApp();
@@ -1145,13 +1219,16 @@ async function initStorage(){
   if(!SCRIPT_URL) return 'local';
   if(isPreviewEnv()){ DEMO = true; return 'demo'; }
   DB = true;
+  await loadOutbox();
   const cached = await idbGet('data:' + SCRIPT_URL);
   if(cached && typeof cached==='object' && cached.docs){
-    applyData(cached);                       // 即時有內容
+    applyData(cached);                       // 即時有內容（離線都開到）
     refreshShared().catch(()=>{});           // 背景查版本，有更新先重新下載
+    if(pendingCount()) scheduleFlush(800);   // 上次離線未同步嘅改動，上到網就補返
+    updateSyncBadge();
     return 'db';
   }
-  try{ await refreshShared(true); return 'db'; }
+  try{ await refreshShared(true); if(pendingCount()) scheduleFlush(800); return 'db'; }
   catch(e){ return 'fail'; }
 }
 
@@ -1181,6 +1258,7 @@ async function sget(key, shared){
   if(!DB || !shared) return lsGet((shared?'s:':'d:')+key);
   if(key==='trip-config') return clone(sh.trip);
   if(key==='group-items'){ known.g = new Set(Array.from(sh.docs.keys()).filter(i=>i.startsWith('g_'))); return clone(sh.g); }
+  if(key==='expenses'){ known.x = new Set(Array.from(sh.docs.keys()).filter(i=>i.startsWith('x_'))); return clone(sh.x); }
   if(key==='bookings'){ known.b = new Set(Array.from(sh.docs.keys()).filter(i=>i.startsWith('b_'))); return clone(sh.b); }
   if(key==='candidates'){ known.c = new Set(Array.from(sh.docs.keys()).filter(i=>i.startsWith('c_'))); return clone(sh.c); }
   if(key.startsWith('public-personal:')){ const n = key.slice(16); return sh.pub[n] ? clone(sh.pub[n]) : null; }
@@ -1247,6 +1325,7 @@ async function sset(key, value, shared){
     if(key==='group-items') return await syncArr('g_','g',value,{},false);
     if(key==='candidates') return await syncArr('c_','c',value,{},false);
     if(key==='bookings') return await syncArr('b_','b',value,{},false);
+    if(key==='expenses') return await syncArr('x_','x',value,{},false);
     if(key.startsWith('public-personal:')){
       const n = key.slice(16);
       return await syncArr('p_'+hex(n)+'_','p:'+n,value,{name:n},true);
@@ -1448,8 +1527,9 @@ let groupItems = [];
 let personalItems = [];
 let candidates = [];
 let bookings = [];
+let expenses = [];
 let publicOthers = {}; // name -> array of that person's public personal items
-let scope = 'group'; // group | personal | compare | candidates | map | bookings  （一入去先睇小隊行程）
+let scope = 'group'; // group | personal | compare | candidates | map | bookings | expenses  （一入去先睇小隊行程）
 let dragCtx = null; // {id}
 let pollTimer = null;
 let publicPollTimer = null;
@@ -1703,7 +1783,7 @@ async function init(){
   try{ if(st==='fail' && sessionStorage.getItem('tp-demo')==='1'){ DB = false; st = 'demo'; } }catch(e){}
   if(st==='demo'){ DB = false; seedDemo(); const r = document.createElement('div'); r.className='demo-ribbon'; r.textContent='預覽模式 · 示範資料只存喺呢度，唔會同步'; document.body.appendChild(r); }
   if(st==='fail'){
-    document.getElementById('loading').innerHTML = '<div style="text-align:center; padding:24px; font-family:var(--font-body); color:var(--ink);">連唔到資料庫，為免覆蓋咗行程，我哋停咗喺度。<br><small>'+lastErr+'</small><br><br><button class="primary-btn" onclick="location.reload()">重新整理</button> <button class="ghost-btn" onclick="startDemo()">試玩模式</button><br><small>（試玩模式淨係存喺呢部機，唔會同步）</small></div>';
+    document.getElementById('loading').innerHTML = '<div style="text-align:center; padding:24px; font-family:var(--font-body); color:var(--ink);">連唔到資料庫（呢部機未曾成功開過，冇離線備份），為免覆蓋咗行程，我哋停咗喺度。<br><small>'+lastErr+'</small><br><br><button class="primary-btn" onclick="location.reload()">重新整理</button> <button class="ghost-btn" onclick="startDemo()">試玩模式</button><br><small>（試玩模式淨係存喺呢部機，唔會同步）</small></div>';
     return;
   }
   myName = await sget('my-name', false);
@@ -1712,6 +1792,7 @@ async function init(){
   personalItems = (await sget('personal-items', false)) || [];
   candidates = (await sget('candidates', true)) || [];
   bookings = (await sget('bookings', true)) || [];
+  expenses = (await sget('expenses', true)) || [];
   await followRename();
   if(myName){
     let _gi = false;
@@ -1743,6 +1824,7 @@ async function init(){
 
   document.getElementById('loading').style.display = 'none';
   document.getElementById('app').style.display = 'block';
+  try{ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hostname==='localhost') && !isPreviewEnv()) navigator.serviceWorker.register('sw.js').catch(()=>{}); }catch(e){}
 
   if(!trip || !myName){ renderSetup(); }
   else{
@@ -1791,6 +1873,8 @@ function startPolling(){
     if(freshGroup && JSON.stringify(freshGroup) !== JSON.stringify(groupItems)){ groupItems = freshGroup; dirty = true; }
     const freshBk = await sget('bookings', true);
     if(freshBk && JSON.stringify(freshBk) !== JSON.stringify(bookings)){ bookings = freshBk; if(scope==='bookings') dirty = true; }
+    const freshX = await sget('expenses', true);
+    if(freshX && JSON.stringify(freshX) !== JSON.stringify(expenses)){ expenses = freshX; if(scope==='expenses') dirty = true; }
     const freshCand = await sget('candidates', true);
     if(freshCand && JSON.stringify(freshCand) !== JSON.stringify(candidates)){ candidates = freshCand; dirty = true; }
     if(myName && Date.now() - _pWriteAt > 4000){
@@ -1898,14 +1982,15 @@ function renderApp(){
 
       <div class="tabbar">
         <div class="tabs">
-          <button data-scope="group" class="${scope==='group'?'active':''}"><span class="tag-dot"></span>小隊行程</button>
+          <button data-scope="group" class="${scope==='group'?'active':''}"><span class="tag-dot"></span>小隊</button>
           <button data-scope="personal" class="${scope==='personal'?'active':''}"><span class="tag-dot"></span>個人</button>
           <button data-scope="candidates" class="${scope==='candidates'?'active':''}"><span class="tag-dot"></span>候選</button>
           <button data-scope="map" class="${scope==='map'?'active':''}"><span class="tag-dot"></span>地圖</button>
+          <button data-scope="expenses" class="${scope==='expenses'?'active':''}"><span class="tag-dot"></span>支出</button>
         </div>
         <div class="spacer"></div>
         <button class="ghost-btn" id="back-cover">Calendar</button>
-        ${(scope==='candidates'||scope==='bookings'||scope==='map') ? '' : `<button class="ghost-btn" id="layout-btn">${layout==='cols'?'↕ 日子打直':'↔ 日子打橫'}</button><button class="ghost-btn" id="sticker-btn">＋ 貼紙</button>`}
+        ${(scope==='candidates'||scope==='bookings'||scope==='map'||scope==='expenses') ? '' : `<button class="ghost-btn" id="layout-btn">${layout==='cols'?'↕ 日子打直':'↔ 日子打橫'}</button><button class="ghost-btn" id="sticker-btn">＋ 貼紙</button>`}
         <button class="ghost-btn" id="rename-btn">✎ 改名</button>
         <button class="ghost-btn" id="look-btn">🎨 外觀</button>
         <button class="ghost-btn" id="refresh-btn">↻ 更新</button>
@@ -1913,6 +1998,7 @@ function renderApp(){
           ? `<button class="primary-btn mint" id="add-candidate-btn">＋ 加候選地點</button>`
           : scope==='bookings' ? `<button class="primary-btn" id="add-booking-btn">＋ 加預訂</button>`
           : scope==='map' ? ''
+          : scope==='expenses' ? `<button class="primary-btn" id="add-expense-btn">＋ 記一筆</button>`
           : ((scope==='compare'||scope==='cover') ? '' : `<button class="primary-btn ${scope==='group'?'coral':''}" id="add-item-btn">＋ 加行程</button>`)}
       </div>
       
@@ -1940,6 +2026,7 @@ function renderApp(){
     personalItems = (await sget('personal-items', false)) || [];
     candidates = (await sget('candidates', true)) || [];
   bookings = (await sget('bookings', true)) || [];
+  expenses = (await sget('expenses', true)) || [];
     trip = (await sget('trip-config', true)) || trip;
     await loadPublicOthers();
     renderApp();
@@ -1969,9 +2056,12 @@ function renderApp(){
 
   const addBkBtn = document.getElementById('add-booking-btn');
   if(addBkBtn) addBkBtn.onclick = ()=> openBookingModal(null);
+  const addXBtn = document.getElementById('add-expense-btn');
+  if(addXBtn) addXBtn.onclick = ()=> openExpenseModal(null);
   if(scope==='candidates'){ renderCandidatesPanel(); }
   else if(scope==='bookings'){ renderBookingsPanel(); }
   else if(scope==='map'){ renderMapPanel(); }
+  else if(scope==='expenses'){ renderExpensesPanel(); }
   else{ renderCalendarPanel(scope); }
   syncAdjust();
 }
@@ -4331,6 +4421,7 @@ function allNames(){
   const add = (n)=>{ if(n && !map.has(n)) map.set(n, ''); };
   groupItems.forEach(g=> (g.participants||[]).forEach(add));
   bookings.forEach(b=>{ add(b.by); (b.members||[]).forEach(add); });
+  expenses.forEach(x=>{ add(x.paidBy); (x.forWho||[]).forEach(add); });
   candidates.forEach(c=>{ add(c.proposedBy); Object.keys(c.votes||{}).forEach(add); });
   const arr = Array.from(map, ([name,av])=>({name, av}));
   arr.sort((a,b)=> (a.name===myName ? -1 : b.name===myName ? 1 : 0));
@@ -4842,6 +4933,157 @@ function openBookingModal(existing){
   };
 }
 
+
+/* ---------------- 支出表 + 夾錢結算 ---------------- */
+const X_CATS = [['food','🍜 食'],['traffic','🚇 交通'],['stay','🏨 住'],['ticket','🎟 門票'],['shop','🛍 買嘢'],['other','📦 其他']];
+let xCur = 'HK$';
+const toCents = v => Math.round((parseFloat(v)||0) * 100);
+const fmtC = c => { const neg = c<0; c = Math.abs(c); const w = Math.floor(c/100), f = c%100; return (neg?'-':'') + xCur + w.toLocaleString('en-US') + (f ? '.' + String(f).padStart(2,'0') : ''); };
+function xCatLabel(k){ const f = X_CATS.find(c=>c[0]===k); return f ? f[1] : '📦 其他'; }
+/* 每人 paid / share（以「分」計，除唔盡嘅尾數逐個人派，總數永遠對得上） */
+function calcSettlement(list){
+  const paid = {}, share = {};
+  const bump = (o,n,v)=>{ o[n] = (o[n]||0) + v; };
+  let total = 0;
+  list.forEach(x=>{
+    const amt = x.cents != null ? x.cents : toCents(x.amount);
+    const who = (x.forWho && x.forWho.length) ? x.forWho.slice() : [x.paidBy];
+    if(!x.paidBy || !amt) return;
+    total += amt; bump(paid, x.paidBy, amt);
+    const base = Math.floor(amt / who.length); let rem = amt - base * who.length;
+    who.forEach(n=>{ bump(share, n, base + (rem>0 ? 1 : 0)); if(rem>0) rem--; });
+  });
+  const names = Array.from(new Set(Object.keys(paid).concat(Object.keys(share))));
+  const rows = names.map(n=>({ name:n, paid:paid[n]||0, share:share[n]||0, net:(paid[n]||0)-(share[n]||0) }));
+  const cr = rows.filter(r=>r.net>0).map(r=>({n:r.name, v:r.net})).sort((a,b)=>b.v-a.v);
+  const db = rows.filter(r=>r.net<0).map(r=>({n:r.name, v:-r.net})).sort((a,b)=>b.v-a.v);
+  const pay = [];
+  let i=0, j=0;
+  while(i<db.length && j<cr.length){
+    const m = Math.min(db[i].v, cr[j].v);
+    if(m>0) pay.push({ from:db[i].n, to:cr[j].n, v:m });
+    db[i].v -= m; cr[j].v -= m;
+    if(db[i].v===0) i++; if(cr[j].v===0) j++;
+  }
+  rows.sort((a,b)=>b.net-a.net);
+  return { total, rows, pay };
+}
+function renderExpensesPanel(){
+  const mount = document.getElementById('scope-content');
+  const list = expenses.slice();
+  const S = calcSettlement(list);
+  const byDate = list.slice().sort((a,b)=> (b.date||'').localeCompare(a.date||'') || (b.addedAt||0)-(a.addedAt||0));
+  mount.innerHTML = `
+    <div class="xp-wrap">
+      <div class="xp-card">
+        <div class="xp-total"><span>總支出</span><b>${fmtC(S.total)}</b><span class="xp-n">${list.length} 筆</span></div>
+        ${S.rows.length ? `<div class="xp-table">
+          <div class="xp-tr xp-th"><span>人</span><span>已俾</span><span>應分擔</span><span>淨額</span></div>
+          ${S.rows.map(r=>`<div class="xp-tr"><span class="xp-who">${bkAvHtml(r.name)}${escapeHtml(r.name)}</span><span>${fmtC(r.paid)}</span><span>${fmtC(r.share)}</span><span class="${r.net>0?'xp-pos':r.net<0?'xp-neg':''}">${r.net>0?'+':''}${fmtC(r.net)}</span></div>`).join('')}
+        </div>` : '<div class="xp-empty">未有支出，撳右上「＋ 記一筆」開始。</div>'}
+      </div>
+      ${S.rows.length ? `<div class="xp-card">
+        <div class="xp-h">💸 最後夾錢（最少轉帳次數）</div>
+        ${S.pay.length ? S.pay.map(p=>`<div class="xp-pay"><span class="xp-who">${bkAvHtml(p.from)}${escapeHtml(p.from)}</span><span class="xp-arrow">→ ${fmtC(p.v)} →</span><span class="xp-who">${bkAvHtml(p.to)}${escapeHtml(p.to)}</span></div>`).join('') : '<div class="xp-empty">已經數口清 🎉</div>'}
+        <button class="ghost-btn" id="xp-copy">📋 複製結算</button>
+      </div>` : ''}
+      <div class="xp-h">明細</div>
+      <div class="xp-list">
+        ${byDate.map(x=>{
+          const all = (x.forWho||[]);
+          const forTxt = all.length ? (all.length>=allNames().length ? '全部人' : all.join('、')) : '—';
+          return `<button class="xp-item" data-id="${escapeHtml(x.id)}">
+            <div class="xp-i-top"><span class="xp-i-t">${escapeHtml(xCatLabel(x.cat).split(' ')[0])} ${escapeHtml(x.title||'')}</span><b>${fmtC(x.cents != null ? x.cents : toCents(x.amount))}</b></div>
+            <div class="xp-i-sub">${x.date ? escapeHtml(x.date)+' · ' : ''}${escapeHtml(x.paidBy||'?')} 俾 · 為 ${escapeHtml(forTxt)}${all.length>1 ? '（人均 '+fmtC(Math.round((x.cents != null ? x.cents : toCents(x.amount))/all.length))+'）' : ''}</div>
+          </button>`;
+        }).join('')}
+      </div>
+    </div>`;
+  mount.querySelectorAll('.xp-item').forEach(b=> b.onclick = ()=> openExpenseModal(expenses.find(x=>x.id===b.dataset.id)));
+  const cp = document.getElementById('xp-copy');
+  if(cp) cp.onclick = async ()=>{
+    const t = '💸 支出結算（總共 ' + fmtC(S.total) + '）\n' + (S.pay.length ? S.pay.map(p=>p.from+' → '+p.to+'  '+fmtC(p.v)).join('\n') : '已經數口清') +
+      '\n\n明細：\n' + S.rows.map(r=>r.name+'：已俾 '+fmtC(r.paid)+'，應分擔 '+fmtC(r.share)).join('\n');
+    try{ await navigator.clipboard.writeText(t); toast('已複製結算'); }catch(e){ prompt('複製以下內容：', t); }
+  };
+}
+function openExpenseModal(existing){
+  const ex = existing || null;
+  const people = allNames().map(m=>m.name);
+  if(ex){ [ex.paidBy].concat(ex.forWho||[]).forEach(n=>{ if(n && !people.includes(n)) people.push(n); }); }
+  const sel = new Set(ex ? (ex.forWho||[]) : people);
+  let payer = ex ? ex.paidBy : myName;
+  let cat = ex ? (ex.cat||'food') : 'food';
+  const today = new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <div class="modal-head"><h3>${ex ? '編輯支出' : '記一筆支出'}</h3><button class="modal-close">✕</button></div>
+      <div class="modal-body">
+        <div class="field"><label>用途（買咗咩）</label><input type="text" id="x-title" placeholder="例如：晚餐、的士、門票" value="${ex ? escapeHtml(ex.title||'') : ''}"></div>
+        <div class="bk-grid">
+          <div class="field"><label>金額 (${xCur})</label><input type="number" id="x-amt" inputmode="decimal" min="0" step="0.01" value="${ex ? ((ex.cents != null ? ex.cents : toCents(ex.amount))/100) : ''}"></div>
+          <div class="field"><label>日期</label><input type="date" id="x-date" value="${ex ? (ex.date||'') : today}"></div>
+        </div>
+        <div class="field"><label>類別</label><div class="bk-mem-pick" id="x-cat"></div></div>
+        <div class="field"><label>邊個俾錢？</label><div class="bk-mem-pick" id="x-payer"></div></div>
+        <div class="field">
+          <label>為邊幾個人？（平分，撳名剔／取消）</label>
+          <div class="bk-quick"><button type="button" id="x-all">全部人</button><button type="button" id="x-me">只有我</button><button type="button" id="x-none">清除</button></div>
+          <div class="bk-mem-pick" id="x-for"></div>
+          <div class="xp-hint" id="x-hint"></div>
+        </div>
+        <div class="modal-actions">
+          <button class="ghost-btn" id="x-cancel">取消</button>
+          <button class="primary-btn" id="x-save">${ex ? '儲存' : '加入'}</button>
+        </div>
+        ${ex ? '<button class="danger-link" id="x-del">🗑 刪除呢筆支出</button>' : ''}
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = ()=> overlay.remove();
+  overlay.querySelector('.modal-close').onclick = close;
+  overlay.querySelector('#x-cancel').onclick = close;
+  overlay.addEventListener('mousedown', (e)=>{ if(e.target===overlay) close(); });
+  const catEl = overlay.querySelector('#x-cat'), payEl = overlay.querySelector('#x-payer'), forEl = overlay.querySelector('#x-for'), hint = overlay.querySelector('#x-hint');
+  const amtEl = overlay.querySelector('#x-amt');
+  const drawHint = ()=>{ const c = toCents(amtEl.value); hint.textContent = (c && sel.size) ? '人均 ' + fmtC(Math.round(c/sel.size)) + '（' + sel.size + ' 人）' : ''; };
+  const draw = ()=>{
+    catEl.innerHTML = X_CATS.map(c=>`<button type="button" class="bk-mem-opt${cat===c[0]?' on':''}" data-k="${c[0]}"><span>${c[1]}</span></button>`).join('');
+    catEl.querySelectorAll('button').forEach(b=> b.onclick = ()=>{ cat = b.dataset.k; draw(); });
+    payEl.innerHTML = people.map(n=>`<button type="button" class="bk-mem-opt${payer===n?' on':''}" data-name="${escapeHtml(n)}">${bkAvHtml(n)}<span>${escapeHtml(n)}</span></button>`).join('');
+    payEl.querySelectorAll('button').forEach(b=> b.onclick = ()=>{ payer = b.dataset.name; draw(); });
+    forEl.innerHTML = people.map(n=>`<button type="button" class="bk-mem-opt${sel.has(n)?' on':''}" data-name="${escapeHtml(n)}">${bkAvHtml(n)}<span>${escapeHtml(n)}</span></button>`).join('');
+    forEl.querySelectorAll('button').forEach(b=> b.onclick = ()=>{ const n = b.dataset.name; if(sel.has(n)) sel.delete(n); else sel.add(n); draw(); });
+    drawHint();
+  };
+  draw();
+  amtEl.addEventListener('input', drawHint);
+  overlay.querySelector('#x-all').onclick = ()=>{ people.forEach(n=>sel.add(n)); draw(); };
+  overlay.querySelector('#x-me').onclick = ()=>{ sel.clear(); sel.add(myName); draw(); };
+  overlay.querySelector('#x-none').onclick = ()=>{ sel.clear(); draw(); };
+  const del = overlay.querySelector('#x-del');
+  if(del) del.onclick = async ()=>{
+    if(del.dataset.sure!=='1'){ del.dataset.sure='1'; del.textContent='再撳一次確定刪除'; return; }
+    expenses = expenses.filter(x=>x.id!==ex.id);
+    await sset('expenses', expenses, true); close(); renderApp();
+  };
+  overlay.querySelector('#x-save').onclick = async ()=>{
+    const title = overlay.querySelector('#x-title').value.trim();
+    const cents = toCents(amtEl.value);
+    if(!title){ alert('入返用途先'); return; }
+    if(cents<=0){ alert('入返金額先'); return; }
+    if(!payer){ alert('揀返邊個俾錢'); return; }
+    if(!sel.size){ alert('最少揀一位「為邊個」（唔肯定就撳「全部人」）'); return; }
+    const data = { title, cents, cat, paidBy:payer, forWho:Array.from(sel), date: overlay.querySelector('#x-date').value };
+    if(ex){ const x = expenses.find(v=>v.id===ex.id); if(x){ delete x.amount; Object.assign(x, data); } }
+    else expenses.push(Object.assign({ id: uid(), by: myName, addedAt: Date.now() }, data));
+    await sset('expenses', expenses, true);
+    close(); renderApp();
+  };
+}
+
 /* ---------------- trip modal ---------------- */
 async function renameMe(newName){
   newName = (newName||'').trim();
@@ -4851,6 +5093,7 @@ async function renameMe(newName){
   groupItems = (await sget('group-items', true)) || [];
   candidates = (await sget('candidates', true)) || [];
   bookings = (await sget('bookings', true)) || [];
+  expenses = (await sget('expenses', true)) || [];
   groupItems.forEach(it=>{ if(it.owner===old) it.owner = newName; if(it.participants) it.participants = swap(it.participants); });
   personalItems.forEach(it=>{ if(it.owner===old) it.owner = newName; if(it.participants) it.participants = swap(it.participants); });
   candidates.forEach(c=>{
@@ -4862,6 +5105,7 @@ async function renameMe(newName){
   await sset('my-name', myName, false);
   await sset('group-items', groupItems, true);
   bookings = (await sget('bookings', true)) || [];
+  expenses = (await sget('expenses', true)) || [];
   bookings.forEach(b=>{ if(b.by===old) b.by = newName; if(Array.isArray(b.members)) b.members = swap(b.members); });
   await sset('bookings', bookings, true);
   await sset('candidates', candidates, true);
