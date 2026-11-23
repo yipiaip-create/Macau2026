@@ -832,6 +832,10 @@
 
   /* v4: 拉長短行程更易郁 + 即時顯示新時間 */
   .resize-handle{height:22px !important; z-index:4; align-items:flex-end;}
+  .item-card.short .resize-handle{height:8px !important;}
+  .item-card.short .resize-handle span{height:3px !important; width:26px !important; margin-bottom:1px !important;}
+  .item-card.short .adj-open{width:16px; height:16px; font-size:9px; top:2px; right:2px !important;}
+  .item-card.short .item-title{padding-right:18px;}
   .resize-handle span{width:38px !important; height:5px !important; opacity:.6 !important; margin-bottom:3px !important; background:var(--ink); box-shadow:0 0 0 1.5px rgba(255,255,255,.55);}
   .resize-handle.h{width:22px !important; height:auto !important; align-items:center; justify-content:flex-end;}
   .resize-handle.h span{width:5px !important; height:38px !important; margin:0 3px 0 0 !important;}
@@ -2083,14 +2087,15 @@ function itemCardHtml(cfg){
   const compact = (+cfg.duration||0) <= 90;
   const startM = timeToMins(cfg.time) - START_HOUR*60;
   const rows = layout==='rows';
-  let posStyle;
+  let posStyle, hpx = 999;
   if(rows){
     const left = Math.max(0, startM/60*ROWW);
     const width = Math.max(44, (cfg.duration/60)*ROWW - 3);
     posStyle = `left:${left}px; width:${width}px; top:${cfg.leftPct}%; height:${cfg.widthPct}%;`;
   } else {
     const top = Math.max(0, startM/60*ROW_H);
-    const height = Math.max(28, (cfg.duration/60)*ROW_H - 3);
+    const height = Math.max(32, (cfg.duration/60)*ROW_H - 3);
+    hpx = height;
     posStyle = `top:${top}px; height:${height}px; left:${cfg.leftPct}%; width:${cfg.widthPct}%;`;
   }
   const photos = compact ? '' : (cfg.photos||[]).slice(0,3).map(p=>`<img src="${p}">`).join('');
@@ -2126,7 +2131,7 @@ function itemCardHtml(cfg){
   const adjBtn = cfg.editable ? `<button type="button" class="adj-open" style="right:${cfg.showJoin?24:3}px" data-adjopen="${cfg.key}" title="調整時間">⏱</button>` : '';
   const resizeHtml = cfg.editable ? `<div class="resize-handle${rows?' h':''}" data-resize-key="${cfg.key}"><span></span></div>` : '';
   return `
-    <div class="item-card ${adjustKey===cfg.key?'adjusting ':''}${compact?'compact ':''}${compact&&+cfg.duration>=90?'tall ':''}${cfg.colorClass}${cfg.conflict?' conflict':''}${joinedMe?' joined-me':''}${cfg.type==='transit'?' transit':''}" draggable="${cfg.editable?'true':'false'}"
+    <div class="item-card ${adjustKey===cfg.key?'adjusting ':''}${compact?'compact ':''}${hpx<64?'short ':''}${compact&&+cfg.duration>=90?'tall ':''}${cfg.colorClass}${cfg.conflict?' conflict':''}${joinedMe?' joined-me':''}${cfg.type==='transit'?' transit':''}" draggable="${cfg.editable?'true':'false'}"
          data-key="${cfg.key}" data-editable="${cfg.editable?1:0}"
          style="${posStyle} ${colorStyle}">
       ${conflictHtml}
