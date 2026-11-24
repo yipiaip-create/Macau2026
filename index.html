@@ -1117,6 +1117,13 @@
   .xp-item{text-align:left; background:#fff; border:2px solid var(--ink); border-radius:14px; padding:9px 12px; font:inherit; color:inherit; cursor:pointer; display:flex; flex-direction:column; gap:3px;}
   .xp-i-top{display:flex; justify-content:space-between; gap:8px; font-weight:700;}
   .xp-i-sub{font-size:12px; color:var(--ink-soft);}
+
+  /* 後備 if 有時間 */
+  .lv-if{background:#EFEDE8; border:1.5px dashed var(--line-strong); border-radius:12px; padding:6px 10px 8px; color:var(--ink-soft);}
+  .lv-if .lv-seghead em{font-style:normal; font-size:11px; margin-left:6px;}
+  .lv-item.lv-backup{filter:grayscale(.85); opacity:.85; border-left-style:dashed;}
+  .lv-item.lv-backup .lv-time{font-size:11px; color:var(--ink-soft); white-space:nowrap; writing-mode:horizontal-tb;}
+  .ifn{font-size:10px; line-height:1.25; font-weight:800; color:#8A8478; margin-top:2px; white-space:nowrap;}
 </style>
 </head>
 <body>
@@ -2245,7 +2252,7 @@ function buildDayItems(mode, dateStr){
     const cfg = Object.assign({
       key, id: it.id, title: it.title, time: it.time, duration: it.duration,
       location: it.location, address: it.address, mapUrl: it.mapUrl, igUrl: it.igUrl, type: it.type, options: it.options, chosen: it.chosen, lat: it.lat, lng: it.lng, geoKey: it.geoKey, geoSrc: it.geoSrc, photos: it.photos||[], colorClass: 'personal',
-      tag: it.tag||'', color: it.color||'', bw: it.bw, bc: it.bc, pri: it.pri, notes: it.notes||'', lnote: it.lnote||'',
+      tag: it.tag||'', color: it.color||'', bw: it.bw, bc: it.bc, pri: it.pri, backup: !!it.backup, notes: it.notes||'', lnote: it.lnote||'',
       sourceType: 'personal', editable: false, showJoin: false, conflict: false,
       leftPct: 2, widthPct: 96, ownerTag: null
     }, opts);
@@ -2257,7 +2264,7 @@ function buildDayItems(mode, dateStr){
     const cfg = Object.assign({
       key, id: it.id, title: it.title, time: it.time, duration: it.duration,
       location: it.location, address: it.address, mapUrl: it.mapUrl, igUrl: it.igUrl, type: it.type, options: it.options, chosen: it.chosen, lat: it.lat, lng: it.lng, geoKey: it.geoKey, geoSrc: it.geoSrc, photos: it.photos||[], colorClass: 'group',
-      tag: it.tag||'', color: it.color||'', bw: it.bw, bc: it.bc, pri: it.pri, notes: it.notes||'', lnote: it.lnote||'',
+      tag: it.tag||'', color: it.color||'', bw: it.bw, bc: it.bc, pri: it.pri, backup: !!it.backup, notes: it.notes||'', lnote: it.lnote||'',
       sourceType: 'group', editable: false, showJoin: false, conflict: false,
       leftPct: 2, widthPct: 96, ownerTag: it.owner, groupId: it.id
     }, opts);
@@ -2275,13 +2282,13 @@ function buildDayItems(mode, dateStr){
   }
   else if(mode==='group'){
     const sp = selPlans(), two = sp.length>1; const PL = two?66:(R?52:58), PW = two?33:(R?46:40);
-    const gAll = gVis().filter(x=>x.date===dateStr); const gToday = gAll.filter(x=>planOf(x)===sp[0]);
-    const pToday = personalItems.filter(x=>x.date===dateStr);
+    const gAll = gVis().filter(x=>x.date===dateStr); const gToday = gAll.filter(x=>planOf(x)===sp[0] && !x.backup);
+    const pToday = personalItems.filter(x=>x.date===dateStr && !x.backup);
     gAll.forEach(it=>{ const k = sp.indexOf(planOf(it));
-      pushGroup(it, {editable:true, showJoin:true, leftPct: two ? 1+k*32 : 2, widthPct: two ? 31 : (R?46:54), conflict: pToday.some(p=>overlaps(p,it)), colorClass: two ? 'group plan-'+(k?'b':'a') : 'group', ownerTag: two ? (it.owner||'')+' · '+planName(planOf(it)) : it.owner});
+      pushGroup(it, {editable:true, showJoin:true, leftPct: two ? 1+k*32 : 2, widthPct: two ? 31 : (R?46:54), conflict: !it.backup && pToday.some(p=>overlaps(p,it)), colorClass: two ? 'group plan-'+(k?'b':'a') : 'group', ownerTag: two ? (it.owner||'')+' · '+planName(planOf(it)) : it.owner});
     });
-    pToday.forEach(it=>{
-      pushPersonal(it, {editable:true, leftPct:PL, widthPct:PW, ownerTag:'你的個人行程', conflict: gToday.some(g=>overlaps(g,it))});
+    personalItems.filter(x=>x.date===dateStr).forEach(it=>{
+      pushPersonal(it, {editable:true, leftPct:PL, widthPct:PW, ownerTag:'你的個人行程', conflict: !it.backup && gToday.some(g=>overlaps(g,it))});
     });
     Object.keys(publicOthers).filter(n=>n!==myName).forEach(name=>{
       (publicOthers[name]||[]).filter(x=>x.date===dateStr).forEach(it=>{
@@ -2297,8 +2304,8 @@ function buildDayItems(mode, dateStr){
     });
   }
   else if(mode==='compare'){
-    const mine = personalItems.filter(x=>x.date===dateStr).map(it=>({it}));
-    const team = groupItems.filter(x=>x.date===dateStr && planOf(x)===selPlans()[0]).map(it=>({it}));
+    const mine = personalItems.filter(x=>x.date===dateStr && !x.backup).map(it=>({it}));
+    const team = groupItems.filter(x=>x.date===dateStr && planOf(x)===selPlans()[0] && !x.backup).map(it=>({it}));
     mine.forEach(m=>{
       team.forEach(t=>{
         if(overlaps(m.it, t.it)){ m.conflict = true; t.conflict = true; }
@@ -2428,7 +2435,7 @@ function stickersHtml(dateStr, dates){
 
 function dayHeadInner(f){
   const dn = dayNote(f.dateStr, 'top');
-  return `<div class="dow">DAY ${f.idx+1}</div><div class="dnum">${f.d.getMonth()+1}/${f.d.getDate()}<span class="dwk">週${DOW[f.d.getDay()]}</span></div>${dn ? `<div class="dnote" data-dnote="${f.dateStr}" title="${escapeHtml(dn)}">${escapeHtml(dn.split('\n')[0])}</div>` : ''}<button type="button" class="dn-edit" data-dnote="${f.dateStr}" title="當日資訊">✎</button>`;
+  return `<div class="dow">DAY ${f.idx+1}</div><div class="dnum">${f.d.getMonth()+1}/${f.d.getDate()}<span class="dwk">週${DOW[f.d.getDay()]}</span></div>${dn ? `<div class="dnote" data-dnote="${f.dateStr}" title="${escapeHtml(dn)}">${escapeHtml(dn.split('\n')[0])}</div>` : ''}${f.ifN ? `<div class="ifn" title="後備（if 有時間）活動喺「清單」睇">⏳ 後備 ${f.ifN}</div>` : ''}<button type="button" class="dn-edit" data-dnote="${f.dateStr}" title="當日資訊">✎</button>`;
 }
 
 /* ---------------- 清單視圖（按時段分段，可自己加字） ---------------- */
@@ -2486,8 +2493,8 @@ function lvItemHtml(cfg){
   const ph = (cfg.photos||[]).slice(0,4).map(p=>'<img src="' + p + '" alt="">').join('');
   const tagHtml = cfg.tag ? '<span class="lv-tag" style="' + (cfg.color ? 'background:' + cfg.color + ';color:' + readableOn(cfg.color) + ';' : '') + '">' + escapeHtml(cfg.tag) + '</span>' : '';
   const dot = cfg.color || ((cfg.colorClass||'').indexOf('group')>-1 ? 'var(--peach-deep)' : 'var(--blue-deep)');
-  return '<div class="lv-item" data-key="' + cfg.key + '" style="--lvc:' + dot + '">' +
-    '<div class="lv-time">' + cfg.time + '<small>–' + end + '</small></div>' +
+  return '<div class="lv-item' + (cfg.backup ? ' lv-backup' : '') + '" data-key="' + cfg.key + '" style="--lvc:' + dot + '">' +
+    '<div class="lv-time">' + (cfg.backup ? '備' : cfg.time + '<small>–' + end + '</small>') + '</div>' +
     '<div class="lv-main">' +
       '<div class="lv-title">' + (cfg.pri==='must' ? '★ ' : '') + escapeHtml(cfg.title) + tagHtml + '</div>' +
       (cfg.location ? '<div class="lv-loc">📍 ' + escapeHtml(cfg.location) + '</div>' : '') +
@@ -2506,7 +2513,8 @@ function lvDayText(dateStr, idx, mode){
   const d = parseDate(dateStr), segs = getSegs();
   const out = ['Day ' + (idx+1) + ' - ' + (d.getMonth()+1) + '.' + d.getDate() + ' (' + DOW[d.getDay()] + ')'];
   const top = dayNote(dateStr, 'top'); if(top) out.push(top);
-  const cfgs = buildDayItems(mode, dateStr).filter(c=> c.type!=='transit').sort((a,b)=> adjMin(a.time)-adjMin(b.time));
+  const allC = buildDayItems(mode, dateStr).filter(c=> c.type!=='transit').sort((a,b)=> adjMin(a.time)-adjMin(b.time));
+  const cfgs = allC.filter(c=>!c.backup), ifC = allC.filter(c=>c.backup);
   segs.forEach((x,i)=>{
     const its = cfgs.filter(c=> segIdxOf(c.time, segs)===i), n = dayNote(dateStr, x.id);
     if(!its.length && !n) return;
@@ -2514,6 +2522,7 @@ function lvDayText(dateStr, idx, mode){
     its.forEach(c=>{ out.push(c.time + '-' + endTimeStr(c.time, c.duration) + ' ' + (c.pri==='must' ? '★' : '') + c.title + (c.location ? ' 📍' + c.location : '')); if(c.lnote) out.push('  ' + c.lnote.replace(/\n/g, '\n  ')); });
     if(n) out.push(n);
   });
+  if(ifC.length){ out.push('', '⏳ if 有時間：'); ifC.forEach(c=> out.push('・' + (c.pri==='must' ? '★' : '') + c.title + (c.location ? ' 📍' + c.location : ''))); }
   return out.join('\n');
 }
 function lvTa(date, key, val){
@@ -2560,7 +2569,8 @@ function renderListPanel(mode){
   const dates = tripDates(), segs = getSegs();
   const days = dates.map((dateStr, idx)=>{
     const d = parseDate(dateStr);
-    const cfgs = buildDayItems(mode, dateStr).slice().sort((a,b)=> adjMin(a.time)-adjMin(b.time));
+    const allCfgs = buildDayItems(mode, dateStr).slice().sort((a,b)=> adjMin(a.time)-adjMin(b.time));
+    const cfgs = allCfgs.filter(c=>!c.backup), ifCfgs = allCfgs.filter(c=>c.backup);
     const buckets = segs.map(()=>[]);
     cfgs.forEach(c=> buckets[segIdxOf(c.time, segs)].push(c));
     const topNote = dayNote(dateStr, 'top');
@@ -2588,6 +2598,7 @@ function renderListPanel(mode){
       bks +
       '<div class="lv-top' + (topNote ? '' : ' lv-hid') + '" data-nk="top">' + lvTa(dateStr, 'top', topNote) + '</div>' +
       segHtml +
+      (ifCfgs.length ? '<div class="lv-seg lv-if"><div class="lv-seghead"><span>⏳ if 有時間</span><em>後備，唔佔時間表</em></div>' + ifCfgs.map(lvItemHtml).join('') + '</div>' : '') +
       (chips.length ? '<div class="lv-addrow">＋ 加字：' + chips.join('') + '</div>' : '') +
     '</section>';
   }).join('');
@@ -2710,8 +2721,9 @@ function renderCalendarPanel(mode){
   const rowsMode = layout==='rows';
   const bkMax = Math.max(0, ...dates.map(d=> bookingsOn(d).length));
   const bkShown = bkExpandAll ? (bkMax>3 ? bkMax+1 : bkMax) : Math.min(bkMax, 3 + (bkMax>3 ? 1 : 0));
-  const hasDN = dates.some(d=> dayNote(d, 'top'));
-  const headH = 64 + (bkMax ? bkShown*26 + 8 : 0) + (hasDN ? 16 : 0);
+  const hasIF = dates.some(d=> buildDayItems(mode, d).some(c=>c.backup));
+  const hasDN = dates.some(d=> dayNote(d, 'top')) || hasIF;
+  const headH = 64 + (bkMax ? bkShown*26 + 8 : 0) + (hasDN ? 16 : 0) + (hasIF && dates.some(d=> dayNote(d,'top')) ? 14 : 0);
 
   const dayFrags = dates.map((dateStr, idx)=>{
     const d = parseDate(dateStr);
@@ -2724,9 +2736,11 @@ function renderCalendarPanel(mode){
     } else {
       for(let h=0; h<=nH; h++){ linesHtml += `<div class="grid-line hour" style="top:${h*ROW_H}px"></div>`; }
     }
-    const cfgs = buildDayItems(mode, dateStr);
+    const allCfgs = buildDayItems(mode, dateStr);
+    const cfgs = allCfgs.filter(c=>!c.backup);
+    const ifN = allCfgs.length - cfgs.length;
     const itemsHtml = cfgs.map(c=>itemCardHtml(c)).join('') + stickersHtml(dateStr, dates);
-    return { dateStr, d, idx, linesHtml, itemsHtml };
+    return { dateStr, d, idx, linesHtml, itemsHtml, ifN };
   });
 
   if(rowsMode){
@@ -4435,6 +4449,7 @@ function openItemModal(existing, opts){
         </div>
         ${labelFieldsHtml(it.tag, it.color)}
         ${borderFieldHtml(it.bw, it.bc)}
+        <div class="field"><div class="priority-radio"><label><input type="checkbox" id="f-backup" ${it.backup?'checked':''}>⏳ 後備（if 有時間先去，唔會喺時間表佔位）</label></div></div>
         <div class="field" id="pri-field" style="${currentScope==='group'?'':'display:none;'}">
           <label>呢個活動係唔係必去？</label>
           ${(!editing || (it.owner||myName)===myName)
@@ -4614,6 +4629,7 @@ function openItemModal(existing, opts){
       tag: lab.tag(),
       color: lab.color(),
       bw: bd.bw() || undefined, bc: bd.bc() || undefined, lnote: it.lnote || undefined,
+      backup: overlay.querySelector('#f-backup').checked || undefined,
       pri: currentScope==='group' ? ((overlay.querySelector('input[name="f-pri"]:checked')||{}).value || it.pri || 'nice') : undefined,
       fromBooking: it.fromBooking || undefined,
       owner: it.owner || myName,
