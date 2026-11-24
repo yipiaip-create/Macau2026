@@ -1122,8 +1122,11 @@
   .lv-if{background:#EFEDE8; border:1.5px dashed var(--line-strong); border-radius:12px; padding:6px 10px 8px; color:var(--ink-soft);}
   .lv-if .lv-seghead em{font-style:normal; font-size:11px; margin-left:6px;}
   .lv-item.lv-backup{filter:grayscale(.85); opacity:.85; border-left-style:dashed;}
-  .lv-item.lv-backup .lv-time{font-size:11px; color:var(--ink-soft); white-space:nowrap; writing-mode:horizontal-tb;}
+  .lv-item.lv-backup{background:#EFEDE8; border-radius:0 10px 10px 0; padding-right:8px;}
+  .lv-iftag{display:inline-block; margin-left:6px; font-size:10.5px; font-weight:800; color:#8A8478; border:1px dashed #A9A395; border-radius:999px; padding:0 7px;}
   .ifn{font-size:10px; line-height:1.25; font-weight:800; color:#8A8478; margin-top:2px; white-space:nowrap;}
+
+  .map-pin.bkp{filter:grayscale(.9); opacity:.8; border-style:dashed !important; background:#E4E1DA !important; color:#6F6A5E !important;}
 </style>
 </head>
 <body>
@@ -2005,6 +2008,13 @@ async function init(){
   if(st==='local') toast('未連接到共享資料庫，而家淨係儲存喺呢部機');
 }
 
+let _deferRender = false;
+function userBusy(){
+  const a = document.activeElement;
+  if(a && /^(TEXTAREA|INPUT|SELECT)$/.test(a.tagName)) return true;
+  if(document.querySelector('.overlay')) return true;
+  return false;
+}
 async function loadPublicOthers(){
   const fresh = {};
   const keys = await slist('public-personal:', true);
@@ -2033,6 +2043,7 @@ function startPolling(){
   let lastShV = -1, lastStSig = '';
   const pollTick = async ()=>{
     if(dragCtx || document.hidden) return;
+    if(_deferRender && !userBusy()){ _deferRender = false; renderApp(); }
     if(DB){ await refreshShared(); if(sh.v===lastShV) return; lastShV = sh.v; renderMemberBar(); if(await adoptSharedAvatar(true)) renderApp();
       if(await followRename()){ await registerMe(); renderApp(); } }
     let dirty = false;
@@ -2054,15 +2065,18 @@ function startPolling(){
     }
     const freshTrip = await sget('trip-config', true);
     if(freshTrip && JSON.stringify(freshTrip) !== JSON.stringify(trip)){ trip = freshTrip; dirty = true; }
-    if(dirty) renderApp();
+    if(dirty){ if(userBusy()) _deferRender = true; else renderApp(); }
   };
   pollTimer = setInterval(pollTick, 5000);
   setTimeout(pollTick, 600);   // 開頁後即刻同步一次（快取先出畫面，呢次補返最新）
 
   if(publicPollTimer) clearInterval(publicPollTimer);
   publicPollTimer = setInterval(async ()=>{
+    if(document.hidden) return;
+    const before = JSON.stringify(publicOthers);
     await loadPublicOthers();
-    if(scope==='group' || scope==='personal') renderApp();
+    if(JSON.stringify(publicOthers) === before) return;      // 冇變就唔重畫（防止打字／地圖無啦啦跳）
+    if(scope==='group' || scope==='personal'){ if(userBusy()) _deferRender = true; else renderApp(); }
   }, 20000);
 }
 
@@ -2494,9 +2508,9 @@ function lvItemHtml(cfg){
   const tagHtml = cfg.tag ? '<span class="lv-tag" style="' + (cfg.color ? 'background:' + cfg.color + ';color:' + readableOn(cfg.color) + ';' : '') + '">' + escapeHtml(cfg.tag) + '</span>' : '';
   const dot = cfg.color || ((cfg.colorClass||'').indexOf('group')>-1 ? 'var(--peach-deep)' : 'var(--blue-deep)');
   return '<div class="lv-item' + (cfg.backup ? ' lv-backup' : '') + '" data-key="' + cfg.key + '" style="--lvc:' + dot + '">' +
-    '<div class="lv-time">' + (cfg.backup ? '備' : cfg.time + '<small>–' + end + '</small>') + '</div>' +
+    '<div class="lv-time">' + cfg.time + '<small>–' + end + '</small></div>' +
     '<div class="lv-main">' +
-      '<div class="lv-title">' + (cfg.pri==='must' ? '★ ' : '') + escapeHtml(cfg.title) + tagHtml + '</div>' +
+      '<div class="lv-title">' + (cfg.pri==='must' ? '★ ' : '') + escapeHtml(cfg.title) + (cfg.backup ? '<span class="lv-iftag">⏳ if 有時間</span>' : '') + tagHtml + '</div>' +
       (cfg.location ? '<div class="lv-loc">📍 ' + escapeHtml(cfg.location) + '</div>' : '') +
       (cfg.notes ? '<div class="lv-notes">' + linkify(cfg.notes) + '</div>' : '') +
       (cfg.editable
@@ -2514,15 +2528,14 @@ function lvDayText(dateStr, idx, mode){
   const out = ['Day ' + (idx+1) + ' - ' + (d.getMonth()+1) + '.' + d.getDate() + ' (' + DOW[d.getDay()] + ')'];
   const top = dayNote(dateStr, 'top'); if(top) out.push(top);
   const allC = buildDayItems(mode, dateStr).filter(c=> c.type!=='transit').sort((a,b)=> adjMin(a.time)-adjMin(b.time));
-  const cfgs = allC.filter(c=>!c.backup), ifC = allC.filter(c=>c.backup);
+  const cfgs = allC;
   segs.forEach((x,i)=>{
     const its = cfgs.filter(c=> segIdxOf(c.time, segs)===i), n = dayNote(dateStr, x.id);
     if(!its.length && !n) return;
     out.push('', segLabel(segs, i) + '：');
-    its.forEach(c=>{ out.push(c.time + '-' + endTimeStr(c.time, c.duration) + ' ' + (c.pri==='must' ? '★' : '') + c.title + (c.location ? ' 📍' + c.location : '')); if(c.lnote) out.push('  ' + c.lnote.replace(/\n/g, '\n  ')); });
+    its.forEach(c=>{ out.push(c.time + '-' + endTimeStr(c.time, c.duration) + ' ' + (c.backup ? '⏳(if有時間) ' : '') + (c.pri==='must' ? '★' : '') + c.title + (c.location ? ' 📍' + c.location : '')); if(c.lnote) out.push('  ' + c.lnote.replace(/\n/g, '\n  ')); });
     if(n) out.push(n);
   });
-  if(ifC.length){ out.push('', '⏳ if 有時間：'); ifC.forEach(c=> out.push('・' + (c.pri==='must' ? '★' : '') + c.title + (c.location ? ' 📍' + c.location : ''))); }
   return out.join('\n');
 }
 function lvTa(date, key, val){
@@ -2570,7 +2583,7 @@ function renderListPanel(mode){
   const days = dates.map((dateStr, idx)=>{
     const d = parseDate(dateStr);
     const allCfgs = buildDayItems(mode, dateStr).slice().sort((a,b)=> adjMin(a.time)-adjMin(b.time));
-    const cfgs = allCfgs.filter(c=>!c.backup), ifCfgs = allCfgs.filter(c=>c.backup);
+    const cfgs = allCfgs;   // 後備活動留喺自己時段內（灰色顯示）
     const buckets = segs.map(()=>[]);
     cfgs.forEach(c=> buckets[segIdxOf(c.time, segs)].push(c));
     const topNote = dayNote(dateStr, 'top');
@@ -2598,7 +2611,6 @@ function renderListPanel(mode){
       bks +
       '<div class="lv-top' + (topNote ? '' : ' lv-hid') + '" data-nk="top">' + lvTa(dateStr, 'top', topNote) + '</div>' +
       segHtml +
-      (ifCfgs.length ? '<div class="lv-seg lv-if"><div class="lv-seghead"><span>⏳ if 有時間</span><em>後備，唔佔時間表</em></div>' + ifCfgs.map(lvItemHtml).join('') + '</div>' : '') +
       (chips.length ? '<div class="lv-addrow">＋ 加字：' + chips.join('') + '</div>' : '') +
     '</section>';
   }).join('');
@@ -3741,7 +3753,7 @@ function openLookModal(){
 /* ---------------- read-only view modal ---------------- */
 /* ---------------- map tab (Leaflet + OpenStreetMap, geocoding via Nominatim) ---------------- */
 let mapFilter = { group:true, cand:true, personal:true, book:true };
-let _leafletP = null, _geoBusy = false, _mapObj = null;
+let _leafletP = null, _geoBusy = false, _mapObj = null, _mapView = null, _mapSig = '';
 function cleanMapUrl(u){
   u = String(u||'').trim();
   if(!u) return '';
@@ -3791,7 +3803,7 @@ function mapPoints(){
   const pts = [];
   const mk = (kind, it, title, pid)=>{
     const hasPlace = (it.address||'').trim() || (it.mapUrl||'').trim();
-    pts.push({ kind, plan: kind==='group' ? planOf(it) : undefined, id: pid || it.id, title, date:it.date, time:it.time, location:it.location, address:it.address, mapUrl:it.mapUrl,
+    pts.push({ kind, backup: !!it.backup, plan: kind==='group' ? planOf(it) : undefined, id: pid || it.id, title, date:it.date, time:it.time, location:it.location, address:it.address, mapUrl:it.mapUrl,
                people: kind==='group' ? (it.participants||[]).length : 0, hasPlace: !!hasPlace,
                lat: (it.geoKey===geoKeyOf(it) && typeof it.lat==='number') ? it.lat : null,
                lng: (it.geoKey===geoKeyOf(it) && typeof it.lng==='number') ? it.lng : null,
@@ -3944,13 +3956,18 @@ async function renderMapPanel(){
   box.innerHTML = '';
   const map = L.map(box, { zoomControl:true, attributionControl:true }).setView([35.68, 139.76], 11);
   _mapObj = map;
+  const sig = JSON.stringify([mapPlans(), Array.from(mapDaysOff), mapFilter]);
+  const keepView = !!(_mapView && _mapSig===sig);       // 同一組篩選：自動更新時保持你放大／移動後嘅位置
+  _mapSig = sig;
+  if(keepView) map.setView(_mapView.c, _mapView.z, { animate:false });
+  map.on('moveend zoomend', ()=>{ try{ _mapView = { c: map.getCenter(), z: map.getZoom() }; }catch(e){} });
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, attribution:'© OpenStreetMap' }).addTo(map);
   setTimeout(()=>{ try{ map.invalidateSize(); }catch(e){} }, 80);
   const layer = L.layerGroup().addTo(map);
   const markers = {};
   const draw = ()=>{
     layer.clearLayers();
-    const groupSorted = pts.filter(p=>p.kind==='group').sort((a,b)=> ((a.date||'')+(a.time||'')).localeCompare((b.date||'')+(b.time||'')));
+    const groupSorted = pts.filter(p=>p.kind==='group' && !p.backup).sort((a,b)=> ((a.date||'')+(a.time||'')).localeCompare((b.date||'')+(b.time||'')));
     const num = new Map(); const perDay = {};
     groupSorted.forEach(p=>{ perDay[p.date] = (perDay[p.date]||0) + 1; num.set(p.id, perDay[p.date]); });
     const bounds = [];
@@ -3960,12 +3977,12 @@ async function renderMapPanel(){
       if(p.lat==null) return;
       const grp = spot[p.lat.toFixed(5) + ',' + p.lng.toFixed(5)];
       const dx = (grp.indexOf(p) - (grp.length-1)/2) * 30;
-      const label = p.kind==='group' ? num.get(p.id) : (p.kind==='cand' ? '💡' : (p.kind==='book' ? p.pinLabel : '我'));
+      const label = p.backup ? '備' : p.kind==='group' ? num.get(p.id) : (p.kind==='cand' ? '💡' : (p.kind==='book' ? p.pinLabel : '我'));
       const icon = p.kind==='book'
         ? L.divIcon({ className:'', html:`<div class="map-pin book${p.geoApprox?' approx':''}">${label}</div>`, iconSize:[44,26], iconAnchor:[22-dx,13], popupAnchor:[dx,-12] })
-        : L.divIcon({ className:'', html:`<div class="map-pin ${p.kind}${p.geoApprox?' approx':''}${(p.kind==='group'&&planList().length>1)?' pl'+(planIdx(p.plan)%3):''}" ${p.kind==='group' ? `style="background:${dayColorOf(p.date)};color:${readableOn(dayColorOf(p.date))};"` : ''}>${label}</div>`, iconSize:[26,26], iconAnchor:[13-dx,13], popupAnchor:[dx,-12] });
+        : L.divIcon({ className:'', html:`<div class="map-pin ${p.kind}${p.backup?' bkp':''}${p.geoApprox?' approx':''}${(p.kind==='group'&&planList().length>1)?' pl'+(planIdx(p.plan)%3):''}" ${p.kind==='group' ? `style="background:${dayColorOf(p.date)};color:${readableOn(dayColorOf(p.date))};"` : ''}>${label}</div>`, iconSize:[26,26], iconAnchor:[13-dx,13], popupAnchor:[dx,-12] });
       const link = mapLinkAny(p);
-      const pop = `<b>${escapeHtml(p.title||'')}</b>` + ((p.kind==='group'&&planList().length>1) ? `<br><small>${escapeHtml(planName(p.plan))}</small>` : '') +
+      const pop = `<b>${escapeHtml(p.title||'')}</b>` + (p.backup ? '<br><small>⏳ 後備（if 有時間）</small>' : '') + ((p.kind==='group'&&planList().length>1) ? `<br><small>${escapeHtml(planName(p.plan))}</small>` : '') +
         (p.kind==='group' && dayIndexOf(p.date)>=0 ? `<br><span style="color:${dayColorOf(p.date)};font-weight:700;">Day ${dayIndexOf(p.date)+1}</span>` : '') +
         (p.date ? `<br>📅 ${escapeHtml(bkMD(p.date))}${p.time?' '+escapeHtml(p.time):''}` : '') +
         ((p.address||p.location) ? `<br>📍 ${escapeHtml(p.address||p.location)}` : '') +
@@ -3979,6 +3996,7 @@ async function renderMapPanel(){
     const byDay = {};
     groupSorted.forEach(p=>{ if(p.lat!=null){ (byDay[p.date] = byDay[p.date] || []).push([p.lat, p.lng]); } });
     Object.keys(byDay).forEach(d=>{ if(byDay[d].length>1) L.polyline(byDay[d], { color: dayColorOf(d), weight:3, opacity:.65, dashArray:'6 6' }).addTo(layer); });
+    if(keepView) return;
     if(bounds.length===1) map.setView(bounds[0], 15);
     else if(bounds.length>1) map.fitBounds(bounds, { padding:[30,30], maxZoom:16 });
   };
