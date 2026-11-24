@@ -1644,7 +1644,7 @@ function planList(){ return plans.length ? plans : [{id:'p1', name:'方案 1'}];
 function planOf(x){ return x.plan || planList()[0].id; }
 function planName(id){ const p = planList().find(p=>p.id===id); return p ? p.name : ''; }
 function planIdx(id){ return Math.max(0, planList().findIndex(p=>p.id===id)); }
-function selPlans(){ const ids = planList().map(p=>p.id); let a = (planSel||[]).filter(i=>ids.includes(i)); if(!a.length) a = [ids[0]]; return a.slice(0,2); }
+function selPlans(){ const ids = planList().map(p=>p.id); let a = (planSel||[]).filter(i=>ids.includes(i)); if(!a.length) a = [ids[0]]; return (viewMode==='list' && scope!=='map') ? a.slice(-1) : a.slice(0,2); }
 function mapPlans(){ const ids = planList().map(p=>p.id); const a = (mapPlanSel||[]).filter(i=>ids.includes(i)); return a.length ? a : selPlans(); }
 function gVis(){ const a = selPlans(); return groupItems.filter(x=>a.includes(planOf(x))); }
 function candPlans(cid){ return Array.from(new Set(groupItems.filter(x=>x.fromCand===cid).map(planOf))); }
@@ -1656,12 +1656,13 @@ document.addEventListener('click', e=>{ const im = e.target.closest && e.target.
 function planBarHtml(){
   const sp = selPlans();
   const chips = planList().map(p=>{ const k = sp.indexOf(p.id); return `<label class="plan-chip${k>=0?' on':''}" style="--pc:${PLAN_COLORS[k>=0?k:0]}"><input type="checkbox" data-plan="${p.id}" ${k>=0?'checked':''}>${escapeHtml(p.name)}</label>`; }).join('');
-  return `<div class="plan-bar">${chips}<button class="ghost-btn" id="plan-add">＋方案</button><button class="ghost-btn" id="plan-ren" title="改名">✎</button><button class="ghost-btn" id="plan-del" title="刪除方案">🗑</button><span class="plan-hint">${sp.length>1?'對比中（最多剔 2 個）':'剔兩個方案可以並排對比'}</span></div>`;
+  return `<div class="plan-bar">${chips}<button class="ghost-btn" id="plan-add">＋方案</button><button class="ghost-btn" id="plan-ren" title="改名">✎</button><button class="ghost-btn" id="plan-del" title="刪除方案">🗑</button><span class="plan-hint">${viewMode==='list' ? '清單一次睇一個方案（並排對比請用時間表）' : sp.length>1?'對比中（最多剔 2 個）':'剔兩個方案可以並排對比'}</span></div>`;
 }
 function bindPlanBar(){
   document.querySelectorAll('input[data-plan]').forEach(cb=> cb.addEventListener('change', ()=>{
     let a = selPlans().slice(); const id = cb.dataset.plan;
-    if(cb.checked){ a.push(id); if(a.length>2) a.shift(); } else { a = a.filter(x=>x!==id); if(!a.length) a = [id]; }
+    if(viewMode==='list'){ a = [id]; }
+    else if(cb.checked){ a.push(id); if(a.length>2) a.shift(); } else { a = a.filter(x=>x!==id); if(!a.length) a = [id]; }
     planSel = a; lsSet('my-plans', a); renderApp();
   }));
   const b = (id, fn)=>{ const e = document.getElementById(id); if(e) e.onclick = fn; };
