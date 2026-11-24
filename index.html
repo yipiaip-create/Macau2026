@@ -835,6 +835,12 @@
   .bd-w button{flex:1; padding:6px 4px; border:1.5px solid var(--line-strong); border-radius:10px; background:#fff; font-size:12px; font-weight:700; cursor:pointer;}
   .bd-w button.on{background:var(--ink); color:#fff; border-color:var(--ink);}
 
+  .lv-segtime{cursor:pointer; text-decoration:underline dotted;}
+  .lv-inote{margin-top:6px;}
+  .lv-iadd{font-size:11px; padding:2px 9px; border-radius:999px; border:1.2px dashed var(--line-strong); background:#fff; color:var(--ink-soft); cursor:pointer;}
+  .lv-itext{margin-top:0;}
+  .lv-lnote{background:#FFFDF3;}
+
   /* ---------- 當日資訊 + 清單展開 ---------- */
   .day-head, .rows-label{position:relative;}
   .dnote{font-size:10px; line-height:1.25; color:var(--ink-soft); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; cursor:pointer;}
@@ -2239,7 +2245,7 @@ function buildDayItems(mode, dateStr){
     const cfg = Object.assign({
       key, id: it.id, title: it.title, time: it.time, duration: it.duration,
       location: it.location, address: it.address, mapUrl: it.mapUrl, igUrl: it.igUrl, type: it.type, options: it.options, chosen: it.chosen, lat: it.lat, lng: it.lng, geoKey: it.geoKey, geoSrc: it.geoSrc, photos: it.photos||[], colorClass: 'personal',
-      tag: it.tag||'', color: it.color||'', bw: it.bw, bc: it.bc, pri: it.pri, notes: it.notes||'',
+      tag: it.tag||'', color: it.color||'', bw: it.bw, bc: it.bc, pri: it.pri, notes: it.notes||'', lnote: it.lnote||'',
       sourceType: 'personal', editable: false, showJoin: false, conflict: false,
       leftPct: 2, widthPct: 96, ownerTag: null
     }, opts);
@@ -2251,7 +2257,7 @@ function buildDayItems(mode, dateStr){
     const cfg = Object.assign({
       key, id: it.id, title: it.title, time: it.time, duration: it.duration,
       location: it.location, address: it.address, mapUrl: it.mapUrl, igUrl: it.igUrl, type: it.type, options: it.options, chosen: it.chosen, lat: it.lat, lng: it.lng, geoKey: it.geoKey, geoSrc: it.geoSrc, photos: it.photos||[], colorClass: 'group',
-      tag: it.tag||'', color: it.color||'', bw: it.bw, bc: it.bc, pri: it.pri, notes: it.notes||'',
+      tag: it.tag||'', color: it.color||'', bw: it.bw, bc: it.bc, pri: it.pri, notes: it.notes||'', lnote: it.lnote||'',
       sourceType: 'group', editable: false, showJoin: false, conflict: false,
       leftPct: 2, widthPct: 96, ownerTag: it.owner, groupId: it.id
     }, opts);
@@ -2438,6 +2444,17 @@ function segIdxOf(time, segs){
   segs.forEach((x,i)=>{ if(m >= adjMin(x.t)) k = i; });
   return k;
 }
+function segRange(segs, i){ const nx = segs[i+1]; return segs[i].t + (nx ? '–' + nx.t : ' 起'); }
+function segLabel(segs, i){ return (segs[i].n || '').trim() || segRange(segs, i); }
+async function saveItemNote(key, val){
+  const cfg = cardRegistry[key]; if(!cfg) return;
+  const isG = cfg.sourceType==='group';
+  const list = isG ? groupItems : personalItems;
+  const it = list.find(x=> x.id===cfg.id); if(!it) return;
+  if(val) it.lnote = val; else delete it.lnote;
+  cfg.lnote = val;
+  await sset(isG ? 'group-items' : 'personal-items', list, isG);
+}
 function dayNote(date, key){
   const dn = trip && trip.dayNotes && trip.dayNotes[date];
   if(!dn) return '';
@@ -2475,6 +2492,9 @@ function lvItemHtml(cfg){
       '<div class="lv-title">' + (cfg.pri==='must' ? '★ ' : '') + escapeHtml(cfg.title) + tagHtml + '</div>' +
       (cfg.location ? '<div class="lv-loc">📍 ' + escapeHtml(cfg.location) + '</div>' : '') +
       (cfg.notes ? '<div class="lv-notes">' + linkify(cfg.notes) + '</div>' : '') +
+      (cfg.editable
+        ? '<div class="lv-inote">' + (cfg.lnote ? '' : '<button type="button" class="lv-iadd">＋ 加字</button>') + '<textarea class="lv-note lv-itext' + (cfg.lnote ? '' : ' lv-hid') + '" rows="1" data-key="' + cfg.key + '" placeholder="加你自己嘅字…">' + escapeHtml(cfg.lnote||'') + '</textarea></div>'
+        : (cfg.lnote ? '<div class="lv-notes lv-lnote">' + linkify(cfg.lnote) + '</div>' : '')) +
       (ph ? '<div class="lv-ph">' + ph + '</div>' : '') +
       lvWho(cfg) +
       (cfg.ownerTag ? '<div class="lv-own">' + escapeHtml(cfg.ownerTag) + '</div>' : '') +
@@ -2490,8 +2510,8 @@ function lvDayText(dateStr, idx, mode){
   segs.forEach((x,i)=>{
     const its = cfgs.filter(c=> segIdxOf(c.time, segs)===i), n = dayNote(dateStr, x.id);
     if(!its.length && !n) return;
-    out.push('', x.n + '：');
-    its.forEach(c=> out.push(c.time + '-' + endTimeStr(c.time, c.duration) + ' ' + (c.pri==='must' ? '★' : '') + c.title + (c.location ? ' 📍' + c.location : '')));
+    out.push('', segLabel(segs, i) + '：');
+    its.forEach(c=>{ out.push(c.time + '-' + endTimeStr(c.time, c.duration) + ' ' + (c.pri==='must' ? '★' : '') + c.title + (c.location ? ' 📍' + c.location : '')); if(c.lnote) out.push('  ' + c.lnote.replace(/\n/g, '\n  ')); });
     if(n) out.push(n);
   });
   return out.join('\n');
@@ -2549,9 +2569,9 @@ function renderListPanel(mode){
     const segHtml = segs.map((x,i)=>{
       const n = dayNote(dateStr, x.id), has = buckets[i].length > 0;
       const hidden = !has && !n;
-      if(hidden) chips.push('<button type="button" class="lv-chip" data-date="' + dateStr + '" data-nk="' + x.id + '">' + escapeHtml(x.n) + '</button>');
+      if(hidden) chips.push('<button type="button" class="lv-chip" data-date="' + dateStr + '" data-nk="' + x.id + '">' + escapeHtml(segLabel(segs, i)) + '</button>');
       return '<div class="lv-seg' + (hidden ? ' lv-hid' : '') + '" data-date="' + dateStr + '" data-nk="' + x.id + '">' +
-        '<div class="lv-seghead"><span>' + escapeHtml(x.n) + '</span><em>' + x.t + '起</em>' +
+        '<div class="lv-seghead">' + ((x.n||'').trim() ? '<span>' + escapeHtml(x.n) + '</span>' : '') + '<em class="lv-segtime" title="撳呢度改時段">' + segRange(segs, i) + ' ✎</em>' +
           (has && !n ? '<button type="button" class="lv-add" data-date="' + dateStr + '" data-nk="' + x.id + '">＋ 加字</button>' : '') + '</div>' +
         buckets[i].map(lvItemHtml).join('') +
         '<div class="lv-segnote' + (n ? '' : ' lv-hid') + '">' + lvTa(dateStr, x.id, n) + '</div>' +
@@ -2571,10 +2591,10 @@ function renderListPanel(mode){
       (chips.length ? '<div class="lv-addrow">＋ 加字：' + chips.join('') + '</div>' : '') +
     '</section>';
   }).join('');
-  mount.innerHTML = '<div class="lv-wrap"><div class="lv-bar"><button type="button" class="ghost-btn" id="seg-btn">⚙ 分段時間</button></div>' + days + '</div>';
+  mount.innerHTML = '<div class="lv-wrap"><div class="lv-bar"><button type="button" class="ghost-btn" id="seg-btn">⏱ 自訂時段／時間間隔</button></div>' + days + '</div>';
 
   const fit = (ta)=>{ ta.style.height = 'auto'; ta.style.height = Math.max(34, ta.scrollHeight) + 'px'; };
-  mount.querySelectorAll('.lv-note').forEach(ta=>{
+  mount.querySelectorAll('.lv-note:not(.lv-itext)').forEach(ta=>{
     fit(ta);
     ta.addEventListener('input', ()=> fit(ta));
     ta.addEventListener('change', ()=> saveDayNote(ta.dataset.date, ta.dataset.nk, ta.value.trim()));
@@ -2593,9 +2613,18 @@ function renderListPanel(mode){
     if(chip) chip.remove();
   };
   mount.querySelectorAll('.lv-add, .lv-chip').forEach(b=>{ b.onclick = ()=> reveal(b.dataset.date, b.dataset.nk); });
+  mount.querySelectorAll('.lv-iadd').forEach(b=>{
+    b.onclick = (e)=>{ e.stopPropagation(); const ta = b.parentElement.querySelector('textarea'); ta.classList.remove('lv-hid'); b.remove(); fit(ta); ta.focus(); };
+  });
+  mount.querySelectorAll('.lv-itext').forEach(ta=>{
+    fit(ta);
+    ta.addEventListener('input', ()=> fit(ta));
+    ta.addEventListener('click', (e)=> e.stopPropagation());
+    ta.addEventListener('change', ()=> saveItemNote(ta.dataset.key, ta.value.trim()));
+  });
   mount.querySelectorAll('.lv-item').forEach(el=>{
     el.addEventListener('click', (e)=>{
-      if(e.target.closest('a') || e.target.closest('.lv-extra iframe')) return;
+      if(e.target.closest('a') || e.target.closest('.lv-extra iframe') || e.target.closest('.lv-inote')) return;
       const cfg = cardRegistry[el.dataset.key];
       if(!cfg) return;
       if(e.target.closest('.lv-edit')){ openCardCfg(cfg); return; }
@@ -2623,6 +2652,7 @@ function renderListPanel(mode){
   });
   const sg = document.getElementById('seg-btn');
   if(sg) sg.onclick = openSegModal;
+  mount.querySelectorAll('.lv-segtime').forEach(el=>{ el.onclick = openSegModal; });
 }
 function openSegModal(){
   let rows = getSegs().map(x=> Object.assign({}, x));
@@ -2630,8 +2660,9 @@ function openSegModal(){
   overlay.className = 'overlay';
   const draw = ()=>{
     overlay.innerHTML = '<div class="modal"><div class="modal-head"><h3>分段時間</h3><button class="modal-close">✕</button></div><div class="modal-body">' +
-      '<div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px;">每段由你填嘅時間開始，去到下一段開始為止。全隊共用。</div>' +
-      rows.map((x,i)=>'<div class="seg-row"><input type="text" class="seg-n" data-i="' + i + '" maxlength="8" value="' + escapeHtml(x.n) + '" placeholder="名稱"><input type="time" class="seg-t" data-i="' + i + '" value="' + x.t + '"><button type="button" class="ghost-btn seg-del" data-i="' + i + '">✕</button></div>').join('') +
+      '<div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px;">每段由你填嘅時間開始，去到下一段開始為止。名稱可以留空，會用時間做名。全隊共用。</div>' +
+      '<div class="dn-quick" style="margin-bottom:10px;"><button type="button" class="lv-chip seg-preset" data-p="def">早午晚</button><button type="button" class="lv-chip seg-preset" data-p="2">每 2 小時</button><button type="button" class="lv-chip seg-preset" data-p="3">每 3 小時</button><button type="button" class="lv-chip seg-preset" data-p="4">每 4 小時</button></div>' +
+      rows.map((x,i)=>'<div class="seg-row"><input type="text" class="seg-n" data-i="' + i + '" maxlength="8" value="' + escapeHtml(x.n) + '" placeholder="名稱（可留空）"><input type="time" class="seg-t" data-i="' + i + '" value="' + x.t + '"><button type="button" class="ghost-btn seg-del" data-i="' + i + '">✕</button></div>').join('') +
       '<div class="modal-actions" style="margin-top:6px;"><button type="button" class="ghost-btn" id="seg-add">＋ 加一段</button><button type="button" class="ghost-btn" id="seg-reset">還原預設</button></div>' +
       '<div class="modal-actions"><button type="button" class="ghost-btn" id="seg-cancel">取消</button><button type="button" class="primary-btn" id="seg-save">儲存</button></div></div></div>';
     const keep = ()=>{
@@ -2643,9 +2674,19 @@ function openSegModal(){
     overlay.querySelectorAll('.seg-del').forEach(b=>{ b.onclick = ()=>{ keep(); if(rows.length<=1){ toast('最少要有一段'); return; } rows.splice(+b.dataset.i, 1); draw(); }; });
     overlay.querySelector('#seg-add').onclick = ()=>{ keep(); rows.push({ id: uid(), n: '新時段', t: '20:00' }); draw(); };
     overlay.querySelector('#seg-reset').onclick = ()=>{ rows = segDefaults(); draw(); };
+    overlay.querySelectorAll('.seg-preset').forEach(b=>{
+      b.onclick = ()=>{
+        keep();
+        let np;
+        if(b.dataset.p==='def') np = segDefaults();
+        else { np = []; const h = +b.dataset.p; for(let t = START_HOUR; t < 24; t += h) np.push({ id:'', n:'', t: pad(t) + ':00' }); }
+        rows = np.map((x,i)=>({ id: (rows[i] && rows[i].id) || x.id || uid(), n: x.n, t: x.t }));
+        draw();
+      };
+    });
     overlay.querySelector('#seg-save').onclick = async ()=>{
       keep();
-      const out = rows.map(x=>({ id:x.id, n:(x.n||'').trim() || '時段', t:x.t || '12:00' }));
+      const out = rows.map(x=>({ id:x.id, n:(x.n||'').trim(), t:x.t || '12:00' }));
       trip.segs = out;
       await sset('trip-config', trip, true);
       overlay.remove();
@@ -4572,7 +4613,7 @@ function openItemModal(existing, opts){
       photos,
       tag: lab.tag(),
       color: lab.color(),
-      bw: bd.bw() || undefined, bc: bd.bc() || undefined,
+      bw: bd.bw() || undefined, bc: bd.bc() || undefined, lnote: it.lnote || undefined,
       pri: currentScope==='group' ? ((overlay.querySelector('input[name="f-pri"]:checked')||{}).value || it.pri || 'nice') : undefined,
       fromBooking: it.fromBooking || undefined,
       owner: it.owner || myName,
