@@ -1274,6 +1274,34 @@
     .tabbar .tape-bar{padding:13px 12px 11px 14px;}
     .tabbar .tape-bar .ghost-btn, .tabbar .tape-bar .primary-btn, .tabbar .tape-bar .primary-btn.coral, .tabbar .tape-bar .ghost-btn:hover, .tabbar .tape-bar .primary-btn:hover{padding:4px 4px; font-size:12px;}
   }
+
+  /* ===== v12: 預訂清單 ===== */
+  .bk-view-btn{
+    border:0; cursor:pointer; background:var(--tp-brown) no-repeat; background-size:100% 100%; color:#fff; font:inherit; font-weight:800; font-size:12.5px;
+    padding:8px 16px 7px 18px; margin-right:6px; text-shadow:0 1px 2px rgba(0,0,0,.65), 0 0 1px rgba(0,0,0,.6);
+    filter:drop-shadow(0 1.5px 1px rgba(64,49,31,.35)); transform:rotate(-1deg); white-space:nowrap;
+  }
+  .bk-view-btn:active{transform:rotate(-1deg) scale(.94);}
+  .bk-list{display:flex; flex-direction:column; gap:12px; padding:2px 2px 6px;}
+  .bk-grp-h{display:flex; align-items:baseline; gap:8px; font-weight:800; font-size:14px; color:#40311F; margin:0 0 6px; padding-bottom:4px; border-bottom:1.5px solid rgba(64,49,31,.25);}
+  .bk-grp-h span{font-size:11.5px; font-weight:600; color:var(--ink-soft,#7a6a58);}
+  .bk-row{display:flex; gap:10px; align-items:stretch; justify-content:space-between; background:#fff; border:2px solid rgba(64,49,31,.55); border-radius:12px; padding:9px 11px; margin-bottom:7px;}
+  .bk-row.ok{border-color:#5AA6A0; background:#f3faf9;}
+  .bk-row.todo{border-style:dashed;}
+  .bk-row-main{flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:3px;}
+  .bk-row-name{font-weight:800; font-size:14px; color:#40311F; overflow-wrap:anywhere;}
+  .bk-row-when{font-size:12px; color:#5a4733;}
+  .bk-row-mem{font-size:11.5px; color:#5a4733;}
+  .bk-row-side{flex:0 0 auto; display:flex; flex-direction:column; gap:5px; align-items:stretch; justify-content:center;}
+  .bk-row-side button{font:inherit; font-size:12px; font-weight:700; cursor:pointer; padding:5px 10px; border-radius:999px; border:1.5px solid rgba(64,49,31,.5); background:#fffdf8; color:#40311F; white-space:nowrap;}
+  .bk-row-side .bk-tog.must{background:#5AA6A0; border-color:#5AA6A0; color:#fff;}
+  .bk-row-side .bk-tog.nice{background:#fff3d6; border-color:#E0AF2E; color:#40311F;}
+  @media(max-width:640px){ .bk-row{flex-direction:column;} .bk-row-side{flex-direction:row; flex-wrap:wrap;} }
+
+  .bk-drawer .candidates-drawer-head{flex-wrap:wrap; row-gap:6px; column-gap:6px;}
+  .bk-drawer .candidates-drawer-head b, .bk-drawer .candidates-drawer-head .cd-count, .bk-drawer .candidates-drawer-head .cd-add, .bk-view-btn{white-space:nowrap; word-break:keep-all;}
+  .bk-drawer .candidates-drawer-head .cd-count{font-size:11.5px;}
+  @media(max-width:640px){ .bk-drawer .candidates-drawer-head .cd-add{padding:6px 10px; font-size:12px;} .bk-view-btn{padding:7px 12px 6px 14px; margin-right:0;} }
 </style>
 </head>
 <body>
@@ -1855,6 +1883,7 @@ let publicPollTimer = null;
 let cardRegistry = {}; // renderKey -> cfg, rebuilt every calendar render
 let candidatesDrawerOpen = true;
 let bookingsDrawerOpen = false;
+let bkView = 'cards'; // cards | list（預訂抽屜用卡片定清單睇）
 let showCover = true;
 let coverBg = null; // private cover background image
 let mySticker = null; // private decorative image, only visible to me
@@ -2124,6 +2153,7 @@ async function init(){
   coverBg = await sget('my-cover-bg', false);
   layout = (await sget('my-layout', false)) || 'cols';
   viewMode = (await sget('my-view', false)) || 'board';
+  bkView = (await sget('my-bk-view', false)) || 'cards';
   wallpaper = await sget('my-wallpaper', false);
   headerImg = null; // 標題圖固定用預設
   stickers = (await sget('my-stickers', false)) || [];
@@ -2762,8 +2792,9 @@ function renderListPanel(mode){
       (chips.length ? '<div class="lv-addrow">＋ 加字：' + chips.join('') + '</div>' : '') +
     '</section>';
   }).join('');
-  mount.innerHTML = '<div class="lv-wrap"><div class="lv-bar"><button type="button" class="ghost-btn" id="seg-btn">⏱ 自訂時段／時間間隔</button></div>' + days + '</div>';
+  mount.innerHTML = bookingsDrawerHtml(mode) + '<div class="lv-wrap"><div class="lv-bar"><button type="button" class="ghost-btn" id="seg-btn">⏱ 自訂時段／時間間隔</button></div>' + days + '</div>';
 
+  wireBookingsUI(mode);
   const fit = (ta)=>{ ta.style.height = 'auto'; ta.style.height = Math.max(34, ta.scrollHeight) + 'px'; };
   mount.querySelectorAll('.lv-note:not(.lv-itext)').forEach(ta=>{
     fit(ta);
@@ -5283,13 +5314,37 @@ function bookingsDrawerHtml(mode){
         <b>🎫 預訂</b>
         <span class="cd-count">${list.length} 項${list.length?` · 已訂 ${bookedCnt}`:''}</span>
         <div class="spacer"></div>
+        <button type="button" class="bk-view-btn" id="bk-view">${bkView==='list' ? '🗂 卡片' : '📋 清單'}</button>
         <button type="button" class="cd-add" id="bk-add">＋ 加預訂</button>
       </div>
       <div class="candidates-drawer-body bk-drawer-body">
         ${sum}
-        <div class="bk-scroll"><button type="button" class="bk-arr l" aria-label="向左">‹</button><div class="bk-cards">${cards || '<div class="candidates-drawer-empty">仲未有預訂，撳「＋ 加預訂」記低酒店、機票、車票、船票，同埋邊啲人包括喺入面。</div>'}</div><button type="button" class="bk-arr r" aria-label="向右">›</button></div>
+        ${bkView==='list' ? bookingsListHtml(list) : `<div class="bk-scroll"><button type="button" class="bk-arr l" aria-label="向左">‹</button><div class="bk-cards">${cards || '<div class="candidates-drawer-empty">仲未有預訂，撳「＋ 加預訂」記低酒店、機票、車票、船票，同埋邊啲人包括喺入面。</div>'}</div><button type="button" class="bk-arr r" aria-label="向右">›</button></div>`}
       </div>
     </div>`;
+}
+function bookingsListHtml(list){
+  if(!list.length) return '<div class="candidates-drawer-empty">仲未有預訂，撳「＋ 加預訂」記低酒店、機票、車票、船票，同埋邊啲人包括喺入面。</div>';
+  const groups = BK_TYPES.map(t=>({ t, items: list.filter(b=> (BK_TYPES.some(x=>x.k===b.type) ? b.type : 'other') === t.k) })).filter(g=>g.items.length);
+  return '<div class="bk-list">' + groups.map(g=>{
+    const ok = g.items.filter(b=>b.booked).length;
+    const rows = g.items.map(b=>{
+      const mem = Array.isArray(b.members) ? '👥 ' + b.members.map(escapeHtml).join('、') : '未揀成員';
+      return '<div class="bk-row ' + (b.booked ? 'ok' : 'todo') + '" data-bid="' + b.id + '">' +
+        '<div class="bk-row-main">' +
+          '<div class="bk-row-name">' + escapeHtml(b.name || g.t.label) + '</div>' +
+          '<div class="bk-row-when">' + bkWhen(b) + '</div>' +
+          bkPlacesChipsHtml(b) +
+          '<div class="bk-row-mem' + (Array.isArray(b.members) ? '' : ' bk-n') + '">' + mem + (bkInItinerary(b) ? ' · ✓ 已喺行程' : '') + '</div>' +
+        '</div>' +
+        '<div class="bk-row-side">' +
+          '<button type="button" class="bk-tog priority-chip ' + (b.booked ? 'must' : 'nice') + '" data-bid="' + b.id + '">' + (b.booked ? '✅ 已訂好' : '⏳ 未訂') + '</button>' +
+          '<button type="button" class="bk-open" data-bid="' + b.id + '">詳情</button>' +
+          '<button type="button" class="bk-toitem" data-bid="' + b.id + '">＋ 加入行程</button>' +
+        '</div></div>';
+    }).join('');
+    return '<div class="bk-grp"><div class="bk-grp-h">' + g.t.icon + ' ' + g.t.label + '<span>' + g.items.length + ' 項 · 已訂 ' + ok + '</span></div>' + rows + '</div>';
+  }).join('') + '</div>';
 }
 function enableHScroll(el){
   if(!el || el._hs) return; el._hs = true;
@@ -5321,6 +5376,14 @@ function wireBookingsUI(mode){
   if(tg) tg.onclick = ()=>{ bookingsDrawerOpen = !bookingsDrawerOpen; renderCalendarPanel(mode); };
   const add = mount.querySelector('#bk-add');
   if(add) add.onclick = ()=> openBookingModal(null);
+  const bv = mount.querySelector('#bk-view');
+  if(bv) bv.onclick = async ()=>{ bkView = bkView==='list' ? 'cards' : 'list'; bookingsDrawerOpen = true; await sset('my-bk-view', bkView, false); renderCalendarPanel(mode); };
+  mount.querySelectorAll('.bk-tog').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const b = bookings.find(x=>x.id===btn.dataset.bid); if(!b) return;
+      b.booked = !b.booked; await sset('bookings', bookings, true); renderCalendarPanel(mode);
+    };
+  });
   mount.querySelectorAll('.bk-open').forEach(btn=>{ btn.onclick = ()=> openBookingSheet(btn.dataset.bid); });
   mount.querySelectorAll('.bk-toitem').forEach(btn=>{
     btn.onclick = ()=>{
